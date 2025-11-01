@@ -1,0 +1,18 @@
+# BacPipes Worker Requirements
+# Python 3.10
+
+# BACnet Libraries
+BAC0==2025.6.10
+# BACpypes3==0.0.102  # Alternative, not used in current version
+
+# MQTT
+paho-mqtt==2.1.0
+
+# Database
+psycopg2-binary==2.9.9
+
+# Configuration
+python-dotenv==1.0.0
+
+# InfluxDB (optional)
+influxdb-client==1.49.0

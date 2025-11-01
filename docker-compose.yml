@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: bacpipes-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-anatoli}
+      POSTGRES_DB: ${POSTGRES_DB:-bacpipes}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bacpipes-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: bacpipes-frontend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-anatoli}@postgres:5432/${POSTGRES_DB:-bacpipes}
+      NODE_ENV: ${NODE_ENV:-development}
+      TZ: ${TZ:-Asia/Kuala_Lumpur}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - bacpipes-network
+    restart: unless-stopped
+
+  bacnet-worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: bacpipes-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-bacpipes}
+      DB_USER: ${POSTGRES_USER:-anatoli}
+      BACNET_IP: ${BACNET_IP:-192.168.1.35}
+      BACNET_PORT: ${BACNET_PORT:-47808}
+      MQTT_BROKER: ${MQTT_BROKER:-10.0.60.50}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-bacpipes_worker}
+      TZ: ${TZ:-Asia/Kuala_Lumpur}
+    networks:
+      - bacpipes-network
+    restart: unless-stopped
+    # Worker will be implemented in M4, for now it will just sleep
+    command: ["tail", "-f", "/dev/null"]
+
+  # Optional MQTT broker for development (start with: docker-compose --profile development up)
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: bacpipes-mqtt
+    profiles:
+      - development
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mqtt_data:/mosquitto/data
+      - mqtt_logs:/mosquitto/log
+    networks:
+      - bacpipes-network
+    restart: unless-stopped
+
+networks:
+  bacpipes-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  mqtt_data:
+    driver: local
+  mqtt_logs:
+    driver: local
