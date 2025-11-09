@@ -53,8 +53,10 @@ services:
         condition: service_healthy
       frontend:
         condition: service_started
+      mqtt-broker:
+        condition: service_healthy
     environment:
-      # Database connection (via host network, use localhost)
+      # Database connection
       DB_HOST: localhost     # Host networking: access postgres via host-exposed port
       DB_PORT: 5434          # Host-exposed PostgreSQL port
       DB_NAME: ${POSTGRES_DB:-bacpipes}
@@ -63,9 +65,9 @@ services:
       # BACnet configuration
       BACNET_IP: ${BACNET_IP:-192.168.1.35}
       BACNET_PORT: ${BACNET_PORT:-47808}
-      # MQTT configuration
-      MQTT_BROKER: ${MQTT_BROKER:-10.0.60.2}
-      MQTT_PORT: ${MQTT_PORT:-1883}
+      # MQTT configuration (internal broker by default)
+      MQTT_BROKER: ${MQTT_BROKER:-localhost}  # Use localhost since worker uses host networking
+      MQTT_PORT: ${MQTT_PORT:-1884}           # Internal broker exposed on port 1884
       MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-bacpipes_worker}
       # Polling configuration
       POLL_INTERVAL: ${POLL_INTERVAL:-60}
@@ -74,20 +76,91 @@ services:
     network_mode: host       # Required for BACnet communication on local network
     restart: unless-stopped
 
-  # Optional MQTT broker for development (start with: docker-compose --profile development up)
+  # TimescaleDB - Time-series database for historical sensor data
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: bacpipes-timescaledb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-anatoli}
+      POSTGRES_DB: ${TIMESCALEDB_DB:-timescaledb}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5435:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./timescaledb/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bacpipes-network
+    restart: unless-stopped
+
+  # Telegraf - MQTT to TimescaleDB data pipeline (custom Python bridge)
+  telegraf:
+    build:
+      context: ./telegraf
+      dockerfile: Dockerfile
+    container_name: bacpipes-telegraf
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      mqtt-broker:
+        condition: service_healthy
+    environment:
+      # MQTT configuration (internal broker by default)
+      MQTT_BROKER: ${MQTT_BROKER:-localhost}  # Use localhost since telegraf uses host networking
+      MQTT_PORT: ${MQTT_PORT:-1884}           # Internal broker exposed on port 1884
+      # TimescaleDB connection
+      TIMESCALEDB_HOST: localhost  # Use localhost due to host networking
+      TIMESCALEDB_PORT: 5435        # Use host-exposed port
+      TIMESCALEDB_DB: ${TIMESCALEDB_DB:-timescaledb}
+      TIMESCALEDB_USER: ${POSTGRES_USER:-anatoli}
+      TZ: ${TZ:-Asia/Kuala_Kumpur}
+    network_mode: host  # Host networking for TimescaleDB access
+    restart: unless-stopped
+
+  # Grafana - Visualization and dashboards
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: bacpipes-grafana
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    ports:
+      - "3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: ""
+      TZ: ${TZ:-Asia/Kuala_Lumpur}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - bacpipes-network
+    restart: unless-stopped
+
+  # Internal MQTT broker for BACnet data pipeline
   mqtt-broker:
     image: eclipse-mosquitto:2
     container_name: bacpipes-mqtt
-    profiles:
-      - development
     ports:
-      - "1883:1883"
+      - "1884:1883"  # Internal broker on 1884 (1883 used by external broker)
       - "9001:9001"
     volumes:
       - mqtt_data:/mosquitto/data
       - mqtt_logs:/mosquitto/log
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     networks:
       - bacpipes-network
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -i healthcheck || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
 networks:
@@ -96,6 +169,10 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  timescaledb_data:
+    driver: local
+  grafana_data:
     driver: local
   mqtt_data:
     driver: local

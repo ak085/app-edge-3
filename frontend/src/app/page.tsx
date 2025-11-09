@@ -62,11 +62,16 @@ interface DashboardData {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
 
-  const fetchData = async () => {
+  const fetchData = async (isManualRefresh = false) => {
     try {
+      if (isManualRefresh) {
+        setRefreshing(true)
+      }
+
       const response = await fetch('/api/dashboard/summary')
       if (!response.ok) throw new Error('Failed to fetch dashboard data')
       const result = await response.json()
@@ -80,7 +85,14 @@ export default function DashboardPage() {
       setError(err instanceof Error ? err.message : 'Failed to fetch data')
     } finally {
       setLoading(false)
+      if (isManualRefresh) {
+        setRefreshing(false)
+      }
     }
+  }
+
+  const handleManualRefresh = () => {
+    fetchData(true)
   }
 
   useEffect(() => {
@@ -182,11 +194,12 @@ export default function DashboardPage() {
                 Auto-refresh (10s)
               </label>
               <button
-                onClick={fetchData}
-                className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/80"
+                onClick={handleManualRefresh}
+                disabled={refreshing}
+                className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
-                <RefreshCw className="w-4 h-4" />
-                Refresh Now
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Refreshing...' : 'Refresh Now'}
               </button>
             </div>
           </div>

@@ -89,9 +89,9 @@ export default function MonitoringPage() {
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Fetch points from database
+  // Fetch points from database (only MQTT-enabled points)
   useEffect(() => {
-    fetch('/api/points')
+    fetch('/api/points?mqttPublish=true')
       .then(res => res.json())
       .then(data => {
         if (data.success && data.points) {

@@ -5,6 +5,119 @@ All notable changes to BacPipes will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2025-11-09
+
+### Added
+
+#### Infrastructure
+- Internal MQTT broker (Eclipse Mosquitto 2) integrated into docker-compose
+  - Runs on port 1884 (host) / 1883 (internal)
+  - Always-on service with health checks
+  - Persistent data and log volumes
+  - Configuration via `mosquitto/config/mosquitto.conf`
+
+#### Database Management
+- TimescaleDB cleanup script (`timescaledb/cleanup_database.sh`)
+  - Show database statistics (--stats)
+  - Truncate all data (--truncate)
+  - Keep only recent hours (--keep-hours N)
+  - Delete data older than N days (--older-than-days N)
+  - Safety confirmations for destructive operations
+  - Before/after statistics display
+- Documentation: `doc/TIMESCALEDB_CLEANUP.md` (comprehensive guide)
+- Documentation: `TIMESCALEDB_MAINTENANCE.md` (quick reference)
+
+#### Dashboard UI
+- Manual "Refresh Now" button with visual feedback
+  - Separate refresh state from initial page load
+  - Animated spinning icon during refresh
+  - Button disabled during refresh operation
+  - Dynamic text ("Refreshing..." vs "Refresh Now")
+- Auto-refresh checkbox still functional (10-second interval)
+
+### Changed
+
+#### MQTT Architecture
+- Switched from external MQTT broker (10.0.60.2) to internal broker
+  - Worker uses `localhost:1884` (host networking)
+  - Frontend uses `mqtt-broker:1883` (Docker bridge network)
+  - Telegraf uses `mqtt-broker:1883` (Docker bridge network)
+  - Smart broker resolution for frontend components
+
+#### Worker Configuration
+- Unique MQTT client IDs to prevent conflicts
+  - Worker: `bacpipes_worker`
+  - Telegraf: `bacpipes_telegraf`
+  - Client IDs not loaded from database (hardcoded)
+- Removed `raise` statement in telegraf error handler (prevents crashes)
+- Fixed paho-mqtt 2.1.0 callback signatures (added `disconnect_flags` parameter)
+
+#### Frontend
+- Monitoring page connects to internal broker via smart resolution
+  - Maps `localhost` → `mqtt-broker` for Docker containers
+  - Maps port `1884` → `1883` (host → container)
+  - External brokers passed through unchanged
+- Write command API uses same smart broker resolution
+
+### Fixed
+
+- **Dashboard refresh button**: Now fully functional with proper state management
+- **MQTT reconnection loop**: Eliminated by fixing client ID conflicts
+- **Telegraf crashes**: Fixed callback signature mismatch for paho-mqtt 2.1.0
+- **Frontend MQTT connection**: Resolved ECONNREFUSED errors via broker resolution
+- **Write command failures**: Fixed connection issues to MQTT broker
+- **Data collection rate**: Reduced from 66 readings/2min to 8 readings/2min (correct rate)
+- **Database insert errors**: No longer crash MQTT loop in telegraf
+
+### Technical Details
+
+#### MQTT Client ID Management
+- Worker and telegraf previously shared `bacpipes_worker` client ID
+- Caused mutual disconnections every 1-2 seconds
+- Now use separate hardcoded client IDs
+- Database clientId field preserved for future flexibility
+
+#### Docker Networking
+- Frontend runs in bridge network (cannot access `localhost` on host)
+- Smart resolution function maps localhost:1884 → mqtt-broker:1883
+- Worker uses host networking (accesses broker at localhost:1884)
+- Telegraf uses bridge networking (accesses broker at mqtt-broker:1883)
+
+#### Data Cleanup
+- Successfully tested truncate operation (cleared 3,375 duplicate readings)
+- Cleanup script supports partial deletion by time range
+- Confirmed correct polling intervals (5 seconds per point)
+
+### Documentation
+
+- Added comprehensive pre-release checklist (`PRE_RELEASE_CHECKLIST.md`)
+- Documented internal MQTT broker setup and configuration
+- Documented TimescaleDB cleanup procedures
+- Updated README.md with MQTT broker details (pending)
+
+### Migration Notes
+
+- **Breaking Change**: MQTT broker now internal by default
+  - External broker still supported via Settings GUI
+  - Update Settings page if using custom broker
+  - Restart services after changing broker configuration
+
+- **Database**: No schema changes, no migration required
+
+- **Configuration**: Update .env if needed:
+  ```bash
+  MQTT_BROKER=localhost  # For worker (host networking)
+  MQTT_PORT=1884         # Host-mapped port
+  ```
+
+### Known Issues
+
+- Internal broker data not backed up automatically (add to backup procedures)
+- Worker must be restarted manually after timezone/broker changes
+- MONITORING_PAGE_PLAN.md contains outdated information (archive pending)
+
+---
+
 ## [0.6.1] - 2025-11-08
 
 ### Added

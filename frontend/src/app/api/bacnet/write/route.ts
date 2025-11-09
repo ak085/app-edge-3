@@ -4,6 +4,23 @@ import { prisma } from '@/lib/prisma';
 import mqtt from 'mqtt';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * Resolve broker connection for frontend's Docker bridge network
+ * Same logic as monitoring stream endpoint
+ */
+function resolveBrokerForFrontend(dbBroker: string, dbPort: number): { broker: string; port: number } {
+  if (dbBroker === 'localhost' || dbBroker === '127.0.0.1') {
+    return {
+      broker: 'mqtt-broker',
+      port: 1883  // Internal container port
+    };
+  }
+  return {
+    broker: dbBroker,
+    port: dbPort
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -65,6 +82,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve broker for frontend's Docker network
+    const { broker, port } = resolveBrokerForFrontend(mqttConfig.broker, mqttConfig.port);
+
     // Prepare write command
     const writeCommand = {
       jobId,
@@ -83,7 +103,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Connect to MQTT broker and publish write command
-    const brokerUrl = `mqtt://${mqttConfig.broker}:${mqttConfig.port}`;
+    const brokerUrl = `mqtt://${broker}:${port}`;
     const client = mqtt.connect(brokerUrl, {
       clientId: `bacpipes_write_${Date.now()}`,
       clean: true,

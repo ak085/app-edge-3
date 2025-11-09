@@ -8,13 +8,39 @@ export const dynamic = 'force-dynamic';
 // Active MQTT connections map (cleanup on client disconnect)
 const activeConnections = new Map<string, mqtt.MqttClient>();
 
+/**
+ * Resolve broker connection for frontend's Docker bridge network
+ * Frontend cannot access 'localhost' (would resolve to frontend container)
+ * Maps localhost → mqtt-broker (Docker service name)
+ * Maps host port → container port (1884 → 1883)
+ * External brokers are used as-is
+ */
+function resolveBrokerForFrontend(dbBroker: string, dbPort: number): { broker: string; port: number } {
+  // Localhost aliases: map to internal Docker service
+  if (dbBroker === 'localhost' || dbBroker === '127.0.0.1') {
+    return {
+      broker: 'mqtt-broker',
+      port: 1883  // Internal container port (not host-mapped 1884)
+    };
+  }
+  // External broker: use as configured
+  return {
+    broker: dbBroker,
+    port: dbPort
+  };
+}
+
 export async function GET(request: NextRequest) {
-  // Get MQTT configuration from database
+  // Get MQTT configuration from database (source of truth)
   const mqttConfig = await prisma.mqttConfig.findFirst();
 
   if (!mqttConfig) {
     return new Response('MQTT configuration not found', { status: 500 });
   }
+
+  // Resolve broker for frontend's network context
+  // Frontend runs in Docker bridge network, worker/telegraf use host networking
+  const { broker, port } = resolveBrokerForFrontend(mqttConfig.broker, mqttConfig.port);
 
   // Create Server-Sent Events stream
   const encoder = new TextEncoder();
@@ -26,8 +52,8 @@ export async function GET(request: NextRequest) {
       // Generate unique client ID
       clientId = `bacpipes_monitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // Connect to MQTT broker
-      const brokerUrl = `mqtt://${mqttConfig.broker}:${mqttConfig.port}`;
+      // Connect to MQTT broker (using Docker service name)
+      const brokerUrl = `mqtt://${broker}:${port}`;
 
       try {
         mqttClient = mqtt.connect(brokerUrl, {
@@ -42,13 +68,13 @@ export async function GET(request: NextRequest) {
 
         // Connection successful
         mqttClient.on('connect', () => {
-          console.log(`[SSE] Client ${clientId} connected to MQTT broker`);
+          console.log(`[SSE] Client ${clientId} connected to MQTT broker at ${broker}:${port}`);
 
           // Send connection success event
           const data = encoder.encode(`data: ${JSON.stringify({
             type: 'connected',
             timestamp: new Date().toISOString(),
-            broker: `${mqttConfig.broker}:${mqttConfig.port}`
+            broker: `${broker}:${port}`
           })}\n\n`);
           controller.enqueue(data);
 

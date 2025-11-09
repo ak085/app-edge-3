@@ -411,13 +411,25 @@ class MqttPublisher:
         return None
 
     def extract_value(self, bacnet_value):
-        """Extract readable value from BACnet Any object (proven working approach)"""
+        """Extract readable value from BACnet Any object - improved version"""
         try:
-            # Convert to string first
+            # First, try direct numeric/boolean type conversion (most common case)
+            if isinstance(bacnet_value, (int, float, bool)):
+                return bacnet_value
+
+            # Try to extract from common BACpypes3 primitive types
+            if hasattr(bacnet_value, 'value'):
+                # Many BACpypes3 types have a .value attribute
+                extracted = bacnet_value.value
+                if isinstance(extracted, (int, float, bool, str)):
+                    return extracted
+
+            # Convert to string and check if it's an object representation
             value_str = str(bacnet_value)
 
-            # If it's the Any object representation, extract from tagList
-            if "bacpypes3.primitivedata.Any object" in value_str:
+            # If it's an object representation string, we need to extract from tagList
+            if "bacpypes3" in value_str and "object at" in value_str:
+                # This is an object representation, extract from tagList
                 if hasattr(bacnet_value, 'tagList') and bacnet_value.tagList:
                     tag_list = list(bacnet_value.tagList)
 
@@ -428,14 +440,15 @@ class MqttPublisher:
                             data_tag = tag
                             break
 
-                    if not data_tag:
+                    if not data_tag and tag_list:
                         data_tag = tag_list[0]
 
-                    if hasattr(data_tag, 'tag_data') and hasattr(data_tag, 'tag_number'):
+                    if data_tag and hasattr(data_tag, 'tag_data') and hasattr(data_tag, 'tag_number'):
                         tag_number = data_tag.tag_number
                         tag_data = data_tag.tag_data
 
                         if not tag_data or len(tag_data) == 0:
+                            logger.warning(f"Empty tag data in BACnet value")
                             return None
 
                         # Decode based on tag type
@@ -459,7 +472,7 @@ class MqttPublisher:
                                 return struct.unpack('>i', tag_data)[0]
                             else:
                                 return int.from_bytes(tag_data, byteorder='big', signed=True)
-                        elif tag_number == 4:  # Real
+                        elif tag_number == 4:  # Real (float)
                             return struct.unpack('>f', tag_data)[0]
                         elif tag_number == 5:  # Double
                             return struct.unpack('>d', tag_data)[0]
@@ -468,14 +481,34 @@ class MqttPublisher:
                         elif tag_number == 9:  # Enumerated
                             return int.from_bytes(tag_data, byteorder='big')
                         else:
-                            return value_str
+                            logger.warning(f"Unknown BACnet tag type: {tag_number}")
+                            return None
+                else:
+                    logger.warning(f"BACnet object has no tagList: {value_str}")
+                    return None
             else:
-                # Already readable value
-                return value_str
+                # String representation looks clean (not an object), try to parse it
+                # This handles numeric strings, boolean strings, etc.
+                value_clean = value_str.strip()
+
+                # Try parsing as number
+                try:
+                    if '.' in value_clean:
+                        return float(value_clean)
+                    else:
+                        return int(value_clean)
+                except ValueError:
+                    # Not a number, return as string if reasonable length
+                    if len(value_clean) < 100:  # Reasonable string length
+                        return value_clean
+                    else:
+                        logger.warning(f"String value too long ({len(value_clean)} chars)")
+                        return None
 
         except Exception as e:
-            logger.debug(f"Value extraction error: {e}")
-            return str(bacnet_value)
+            logger.error(f"❌ Value extraction error: {e}")
+            logger.debug(f"   Failed to extract from: {type(bacnet_value)} = {bacnet_value}")
+            return None
 
     async def write_bacnet_value(self, device_ip: str, device_port: int, object_type: str,
                                   object_instance: int, value: Any, priority: int = 8,
@@ -572,9 +605,32 @@ class MqttPublisher:
         if not point['mqttTopic'] or not self.mqtt_connected:
             return False
 
+        # Validate value before publishing
+        if value is None:
+            logger.warning(f"Skipping publish for {point['mqttTopic']}: value is None")
+            return False
+
+        # Check if value is an object representation string (should never happen now)
+        if isinstance(value, str) and ("bacpypes3" in value or "object at" in value):
+            logger.error(f"❌ Prevented publishing object string for {point['mqttTopic']}: {value}")
+            return False
+
         try:
+            # Ensure value is JSON-serializable (int, float, str, bool, None)
+            clean_value = value
+            if isinstance(value, (int, float)):
+                clean_value = float(value)
+            elif isinstance(value, bool):
+                clean_value = bool(value)
+            elif isinstance(value, str):
+                clean_value = str(value)
+            else:
+                # Unexpected type, convert to string as last resort
+                logger.warning(f"Unexpected value type {type(value)} for {point['mqttTopic']}, converting to string")
+                clean_value = str(value)
+
             payload = {
-                "value": float(value) if isinstance(value, (int, float)) else value,
+                "value": clean_value,
                 "timestamp": timestamp,
                 "units": point['units'],
                 "quality": "good",
@@ -590,7 +646,7 @@ class MqttPublisher:
                 topic=point['mqttTopic'],
                 payload=json.dumps(payload),
                 qos=point['qos'],
-                retain=True
+                retain=False  # No retained messages for time-series data
             )
 
             return True
