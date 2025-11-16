@@ -59,7 +59,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) as value FROM sensor_readings WHERE time > NOW() - INTERVAL '24 hours';",
+          "rawSql": "SELECT COALESCE(COUNT(*), 0) as value FROM sensor_readings WHERE time > NOW() - INTERVAL '24 hours';",
           "refId": "A"
         }
       ],
@@ -243,7 +243,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT (COUNT(*) FILTER (WHERE quality = 'good')::float / NULLIF(COUNT(*), 0) * 100) as value FROM sensor_readings WHERE time > NOW() - INTERVAL '1 hour';",
+          "rawSql": "SELECT COALESCE((COUNT(*) FILTER (WHERE quality = 'good')::float / NULLIF(COUNT(*), 0) * 100), 0) as value FROM sensor_readings WHERE time > NOW() - INTERVAL '1 hour';",
           "refId": "A"
         }
       ],

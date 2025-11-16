@@ -15,7 +15,7 @@
 BacPipes is a distributed BACnet-to-MQTT data pipeline designed for enterprise building management systems (BMS). It enables:
 
 - 🏢 **Multi-site data collection** from 100s-1000s of buildings
-- 📊 **Real-time monitoring** with Grafana dashboards
+- 📊 **Real-time monitoring** with custom dashboard (TimescaleDB + Next.js)
 - 🤖 **ML-powered optimization** (edge inference, centralized training)
 - 🔒 **Secure, encrypted replication** between sites and central servers
 - 📡 **Resilient architecture** (works offline, auto-recovery)
