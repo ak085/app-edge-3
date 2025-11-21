@@ -1,0 +1,119 @@
+# BacPipes Monitoring Stack
+# Separated from core services for resource isolation
+# See ARCHITECTURE_SPLIT.md for details
+
+services:
+  # TimescaleDB - Time-series database for historical sensor data
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: bacpipes-timescaledb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-anatoli}
+      POSTGRES_DB: ${TIMESCALEDB_DB:-timescaledb}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5435:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./timescaledb/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bacpipes-network
+    restart: unless-stopped
+
+  # Telegraf - MQTT to TimescaleDB data pipeline (custom Python bridge)
+  telegraf:
+    build:
+      context: ./telegraf
+      dockerfile: Dockerfile
+    container_name: bacpipes-telegraf
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      # MQTT configuration (connects to mqtt-broker in core compose)
+      MQTT_BROKER: ${MQTT_BROKER:-localhost}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_CLIENT_ID_TELEGRAF: bacpipes_telegraf_edge
+      # TimescaleDB connection
+      TIMESCALEDB_HOST: localhost
+      TIMESCALEDB_PORT: 5435
+      TIMESCALEDB_DB: ${TIMESCALEDB_DB:-timescaledb}
+      TIMESCALEDB_USER: ${POSTGRES_USER:-anatoli}
+      TZ: ${TZ:-Asia/Kuala_Lumpur}
+    network_mode: host
+    restart: unless-stopped
+
+  # Monitoring Dashboard - Next.js 15 application for TimescaleDB monitoring
+  monitoring-dashboard:
+    build:
+      context: ./monitoring-dashboard
+      dockerfile: Dockerfile
+    container_name: bacpipes-monitoring-dashboard
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    ports:
+      - "3003:3000"
+    environment:
+      # TimescaleDB connection
+      TIMESCALEDB_HOST: localhost
+      TIMESCALEDB_PORT: 5435
+      TIMESCALEDB_DATABASE: ${TIMESCALEDB_DB:-timescaledb}
+      TIMESCALEDB_USER: ${POSTGRES_USER:-anatoli}
+      TIMESCALEDB_PASSWORD: ""
+      NODE_ENV: ${NODE_ENV:-production}
+      TZ: ${TZ:-Asia/Kuala_Lumpur}
+    network_mode: host
+    restart: unless-stopped
+
+  # Grafana - Professional time-series visualization (better suited for large datasets)
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: bacpipes-grafana
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    ports:
+      - "3004:3000"
+    environment:
+      # Grafana settings
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SERVER_ROOT_URL: http://localhost:3004
+      GF_INSTALL_PLUGINS: ""
+      # Pre-configure TimescaleDB datasource
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: timescaledb:5432
+      GF_DATABASE_NAME: ${TIMESCALEDB_DB:-timescaledb}
+      GF_DATABASE_USER: ${POSTGRES_USER:-anatoli}
+      GF_DATABASE_PASSWORD: ""
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - bacpipes-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+# Connect to existing network created by core docker-compose.yml
+networks:
+  bacpipes-network:
+    external: true
+    name: bacpipes_bacpipes-network
+
+# Reuse existing TimescaleDB volume
+volumes:
+  timescaledb_data:
+    external: true
+    name: bacpipes_timescaledb_data
+  grafana_data:
+    driver: local
