@@ -136,6 +136,11 @@ export default function MonitoringPage() {
 
           case 'mqtt_message':
             if (!paused) {
+              // Skip operational topics (write commands/results)
+              if (data.topic.startsWith('bacnet/write/')) {
+                break;
+              }
+
               const message: MqttMessage = {
                 topic: data.topic,
                 payload: data.payload,
@@ -192,16 +197,21 @@ export default function MonitoringPage() {
       console.log('[Monitoring] Cleaning up SSE connection');
       eventSource.close();
     };
-  }, [paused]);
+  }, []);
 
   // Convert Map to sorted array for rendering, then filter
   const sortedMessages = Array.from(latestValues.values()).sort((a, b) =>
     a.topic.localeCompare(b.topic)
   );
 
-  const filteredMessages = sortedMessages.filter(msg =>
-    msg.topic.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filteredMessages = sortedMessages.filter(msg => {
+    // Exclude operational topics (write commands/results)
+    if (msg.topic.startsWith('bacnet/write/')) {
+      return false;
+    }
+    // Apply user filter
+    return msg.topic.toLowerCase().includes(filter.toLowerCase());
+  });
 
   // Clear all values
   const handleClear = () => {

@@ -751,7 +751,7 @@ class MqttPublisher:
 
         cycle_start = time.time()
         current_time = cycle_start
-        timestamp = datetime.now(self.timezone).isoformat()
+        timestamp = datetime.now(pytz.utc).isoformat()  # Use UTC for database storage (timezone-aware)
 
         # Calculate next minute boundary for minute-aligned polling
         next_minute = math.ceil(current_time / 60) * 60

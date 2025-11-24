@@ -189,6 +189,9 @@ temp/
 *.backup
 *~
 
+# Legacy/archived files
+trash/
+
 # ============================================
 # Development / Testing
 # ============================================

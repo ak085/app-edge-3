@@ -133,23 +133,31 @@ export async function GET(request: NextRequest) {
         // Handle MQTT errors
         mqttClient.on('error', (error) => {
           console.error(`[SSE] MQTT error for client ${clientId}:`, error);
-          const errorData = encoder.encode(`data: ${JSON.stringify({
-            type: 'error',
-            message: 'MQTT connection error',
-            error: error.message,
-            timestamp: new Date().toISOString()
-          })}\n\n`);
-          controller.enqueue(errorData);
+          try {
+            const errorData = encoder.encode(`data: ${JSON.stringify({
+              type: 'error',
+              message: 'MQTT connection error',
+              error: error.message,
+              timestamp: new Date().toISOString()
+            })}\n\n`);
+            controller.enqueue(errorData);
+          } catch (err) {
+            // Controller already closed, ignore
+          }
         });
 
         // Handle MQTT disconnection
         mqttClient.on('close', () => {
           console.log(`[SSE] MQTT connection closed for client ${clientId}`);
-          const closeData = encoder.encode(`data: ${JSON.stringify({
-            type: 'disconnected',
-            timestamp: new Date().toISOString()
-          })}\n\n`);
-          controller.enqueue(closeData);
+          try {
+            const closeData = encoder.encode(`data: ${JSON.stringify({
+              type: 'disconnected',
+              timestamp: new Date().toISOString()
+            })}\n\n`);
+            controller.enqueue(closeData);
+          } catch (error) {
+            // Controller already closed, ignore
+          }
         });
 
         // Send heartbeat every 15 seconds to keep connection alive
