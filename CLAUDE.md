@@ -275,15 +275,49 @@ See ROADMAP.md for detailed future plans.
 **Last Updated**: 2025-11-24
 **Status**: Production-ready for single-site deployment
 
-## Recent Updates (2025-11-24)
+## Recent Updates
 
-### Performance & Stability
-- **Production Build**: Frontend now runs in production mode with optimized build
+### 2025-11-30: MQTT Polling Behavior & Dashboard Fixes
+
+#### MQTT Publishing Architecture
+- **Polling Strategy**: Worker checks enabled points every 5 seconds
+  - Each point has individual `pollInterval` setting (configurable per-point)
+  - Points poll when `current_time - last_poll >= pollInterval`
+  - Example: 11 points with 30s interval → 11 messages every 30s
+- **Important**: Points with identical intervals poll simultaneously
+  - Creates synchronized bursts (not continuous streaming)
+  - This is **by design** for minute-aligned timestamps
+  - MQTT broker may show cumulative message counts (not real-time rate)
+- **Database Polling**: Worker queries database every 5 seconds to check point configurations
+  - Allows dynamic reconfiguration without restart
+  - Future optimization: Cache points and reload only on config changes
+
+#### Dashboard Request Handling
+- **Fixed**: "[Request interrupted by user]" error in browser console
+  - Implemented proper AbortController for fetch requests
+  - Gracefully cancels pending requests when component unmounts
+  - Auto-refresh (10s interval) no longer causes race conditions
+- **Behavior**: Dashboard polls `/api/dashboard/summary` every 10 seconds
+  - Shows system status, device stats, and recent point values
+  - Properly handles cleanup on unmount or auto-refresh toggle
+
+#### Worker Performance Stats
+- **Poll Cycle Counter**: Increments with each successful poll cycle
+  - High numbers (17,000+) indicate long uptime, not message rate
+  - Example: 2 cycles/min × 60 min × 24 hr × 6 days = ~17,280 cycles
+- **Database Efficiency**: Single query fetches all enabled points
+  - Query runs every 5 seconds regardless of poll intervals
+  - Result filtered per-point based on elapsed time since last poll
+
+### 2025-11-24: Performance & Stability
+
+#### Production Build
+- **Memory Optimization**: Frontend runs in production mode
   - Memory usage reduced from 14.7GB to 62MB (99.6% reduction)
   - Startup time: 417ms (production) vs 3-5s (development)
   - No more memory leaks or frozen web app
 
-### Monitoring Page Fixes
+#### Monitoring Page Fixes
 - **SSE Connection Stability**: Fixed SSE reconnection issue causing duplicate points
   - Removed `paused` from useEffect dependency to maintain stable connection
   - SSE connection now stays open, filtering handled client-side
@@ -293,18 +327,18 @@ See ROADMAP.md for detailed future plans.
   - Write commands/results no longer clutter the real-time view
   - Only actual BACnet point data displayed
 
-### Settings Page Fixes
+#### Settings Page Fixes
 - **Bulk Poll Interval**: Fixed "Failed to apply bulk poll interval" error
   - Regenerated Prisma client to sync with database schema
   - `allowRemoteControl` field properly mapped to database
   - Apply button now successfully updates all MQTT-enabled points
 
-### Code Quality
+#### Code Quality
 - **Next.js 15 Compliance**: Updated route handlers for async params API
 - **ESLint**: Fixed unescaped characters and React hook dependencies
 - **TypeScript**: Complete interface definitions for Point and Device models
 
-### Deployment
+#### Deployment
 - **Dockerfile**: Production-optimized build process
   - `npm run build` during image creation
   - `npm start` for production server

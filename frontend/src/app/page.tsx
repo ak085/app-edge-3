@@ -67,13 +67,13 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
 
-  const fetchData = async (isManualRefresh = false) => {
+  const fetchData = async (isManualRefresh = false, signal?: AbortSignal) => {
     try {
       if (isManualRefresh) {
         setRefreshing(true)
       }
 
-      const response = await fetch('/api/dashboard/summary')
+      const response = await fetch('/api/dashboard/summary', { signal })
       if (!response.ok) throw new Error('Failed to fetch dashboard data')
       const result = await response.json()
       if (result.success) {
@@ -83,6 +83,10 @@ export default function DashboardPage() {
         setError(result.error || 'Unknown error')
       }
     } catch (err) {
+      // Ignore abort errors (expected when component unmounts or auto-refresh changes)
+      if (err instanceof Error && err.name === 'AbortError') {
+        return
+      }
       setError(err instanceof Error ? err.message : 'Failed to fetch data')
     } finally {
       setLoading(false)
@@ -97,12 +101,21 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    fetchData()
+    const abortController = new AbortController()
+
+    fetchData(false, abortController.signal)
 
     if (autoRefresh) {
-      const interval = setInterval(fetchData, 10000)
-      return () => clearInterval(interval)
+      const interval = setInterval(() => {
+        fetchData(false, abortController.signal)
+      }, 10000)
+      return () => {
+        clearInterval(interval)
+        abortController.abort()
+      }
     }
+
+    return () => abortController.abort()
   }, [autoRefresh])
 
   if (loading) {
