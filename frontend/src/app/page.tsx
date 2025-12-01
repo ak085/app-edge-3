@@ -22,7 +22,10 @@ interface DashboardData {
     mqtt: {
       broker: string
       port: number
-      enabled: boolean
+      connected: boolean
+      configured: boolean
+      enableBatchPublishing: boolean
+      allowRemoteControl: boolean
     }
     system: {
       timezone: string
@@ -271,10 +274,10 @@ export default function DashboardPage() {
           </div>
 
           {/* Message Broker */}
-          <div className="card bg-card border border-green-200 border-l-4 border-l-green-500 p-5 rounded-lg">
+          <div className={`card bg-card border ${data.configuration.mqtt.connected ? 'border-green-200 border-l-4 border-l-green-500' : 'border-red-200 border-l-4 border-l-red-500'} p-5 rounded-lg`}>
             <div className="flex items-center gap-2 mb-4">
-              <MessageSquare className="w-5 h-5 text-green-500" />
-              <h3 className="font-semibold text-green-700">Message Broker</h3>
+              <MessageSquare className={`w-5 h-5 ${data.configuration.mqtt.connected ? 'text-green-500' : 'text-red-500'}`} />
+              <h3 className={`font-semibold ${data.configuration.mqtt.connected ? 'text-green-700' : 'text-red-700'}`}>MQTT Broker</h3>
             </div>
             <div className="space-y-3">
               <div>
@@ -286,10 +289,23 @@ export default function DashboardPage() {
                 <p className="font-mono text-sm">{data.configuration.mqtt.port}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Status</p>
-                <p className={`text-sm font-semibold ${data.configuration.mqtt.enabled ? 'text-green-500' : 'text-red-500'}`}>
-                  {data.configuration.mqtt.enabled ? 'Enabled' : 'Disabled'}
-                </p>
+                <p className="text-xs text-muted-foreground">Connection Status</p>
+                <div className="flex items-center gap-2">
+                  {data.configuration.mqtt.connected ? (
+                    <>
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <p className="text-sm font-semibold text-green-500">Connected</p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                      <p className="text-sm font-semibold text-red-500">Disconnected</p>
+                    </>
+                  )}
+                </div>
+                {!data.configuration.mqtt.configured && (
+                  <p className="text-xs text-red-600 mt-1">⚠️ Configure broker in Settings</p>
+                )}
               </div>
             </div>
           </div>

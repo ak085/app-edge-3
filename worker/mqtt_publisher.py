@@ -67,7 +67,7 @@ class MqttPublisher:
         self.db_user = os.getenv('DB_USER', 'anatoli')
         self.db_password = os.getenv('DB_PASSWORD', '')
 
-        self.mqtt_broker = os.getenv('MQTT_BROKER', '10.0.60.2')
+        self.mqtt_broker = os.getenv('MQTT_BROKER', '10.0.60.3')
         self.mqtt_port = int(os.getenv('MQTT_PORT', '1883'))
         self.mqtt_client_id = os.getenv('MQTT_CLIENT_ID', 'bacpipes_worker')
 
@@ -193,7 +193,7 @@ class MqttPublisher:
             return False
 
     def connect_mqtt(self):
-        """Connect to MQTT broker"""
+        """Connect to MQTT broker (graceful degradation - doesn't fail startup)"""
         try:
             self.mqtt_client = mqtt.Client(client_id=self.mqtt_client_id)
             self.mqtt_client.on_connect = self.on_mqtt_connect
@@ -205,11 +205,21 @@ class MqttPublisher:
 
             # Wait for connection
             time.sleep(2)
-            logger.info(f"✅ Connected to MQTT broker {self.mqtt_broker}:{self.mqtt_port}")
+
+            if self.mqtt_connected:
+                logger.info(f"✅ Connected to MQTT broker {self.mqtt_broker}:{self.mqtt_port}")
+            else:
+                logger.warning(f"⚠️  MQTT broker unreachable at {self.mqtt_broker}:{self.mqtt_port}")
+                logger.warning(f"⚠️  Worker will continue without MQTT publishing. Configure broker in Settings GUI.")
+
+            # Always return True - graceful degradation (app works without MQTT)
             return True
         except Exception as e:
-            logger.error(f"❌ Failed to connect to MQTT broker: {e}")
-            return False
+            logger.warning(f"⚠️  Failed to connect to MQTT broker: {e}")
+            logger.warning(f"⚠️  Worker will continue without MQTT publishing. Configure broker in Settings GUI.")
+            self.mqtt_connected = False
+            # Don't fail startup - return True for graceful degradation
+            return True
 
     def on_mqtt_connect(self, client, userdata, flags, rc):
         """MQTT connection callback"""
@@ -226,8 +236,27 @@ class MqttPublisher:
     def on_mqtt_disconnect(self, client, userdata, rc):
         """MQTT disconnection callback"""
         if rc != 0:
-            logger.warning(f"MQTT unexpected disconnection (code {rc}), will auto-reconnect")
+            logger.warning(f"⚠️  MQTT unexpected disconnection (code {rc}), will auto-reconnect")
             self.mqtt_connected = False
+
+    def reconnect_mqtt(self):
+        """Attempt to reconnect to MQTT broker if disconnected"""
+        if not self.mqtt_connected and self.mqtt_client:
+            try:
+                logger.info(f"🔄 Attempting MQTT reconnection to {self.mqtt_broker}:{self.mqtt_port}...")
+                self.mqtt_client.reconnect()
+                # Brief wait to check connection
+                time.sleep(1)
+                if self.mqtt_connected:
+                    logger.info(f"✅ MQTT reconnected successfully")
+                    return True
+                else:
+                    logger.debug(f"   MQTT reconnection in progress...")
+                    return False
+            except Exception as e:
+                logger.debug(f"   MQTT reconnection failed: {e}")
+                return False
+        return self.mqtt_connected
 
     def on_mqtt_message(self, client, userdata, msg):
         """Handle incoming MQTT messages (write commands) - QUEUE BASED APPROACH"""
@@ -705,6 +734,9 @@ class MqttPublisher:
     def publish_equipment_batch(self, site_id: str, equipment_type: str, equipment_id: str,
                                  points_data: List[Dict], timestamp: str, poll_stats: Dict):
         """Publish equipment-level batch"""
+        if not self.mqtt_connected:
+            return False
+
         try:
             # Normalize to lowercase to match individual topic format
             site_normalized = site_id.lower().replace(' ', '_')
@@ -897,6 +929,10 @@ class MqttPublisher:
         # Main loop - check every 5 seconds for points that need polling
         while not shutdown_requested:
             try:
+                # Try to reconnect to MQTT if disconnected
+                if not self.mqtt_connected:
+                    self.reconnect_mqtt()
+
                 # Process any pending write commands from MQTT (queue-based approach)
                 await self.process_write_commands()
 

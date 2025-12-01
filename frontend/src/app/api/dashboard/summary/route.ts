@@ -110,16 +110,24 @@ export async function GET() {
       ? Math.floor((Date.now() - lastUpdate.getTime()) / 1000)
       : null;
 
+    // Determine MQTT connection status
+    // MQTT is considered "connected" if:
+    // 1. Broker is configured (not default/placeholder)
+    // 2. Points are being updated recently (within 120 seconds)
+    const isMqttConfigured = mqttConfig?.broker && mqttConfig.broker !== '10.0.60.3';
+    const isMqttReceivingData = secondsSinceUpdate !== null && secondsSinceUpdate <= 120;
+    const mqttConnected = isMqttConfigured && publishingPoints > 0 && isMqttReceivingData;
+
     // Determine system status
     let systemStatus: 'operational' | 'degraded' | 'error';
-    if (!mqttConfig?.enabled) {
-      systemStatus = 'error';
-    } else if (secondsSinceUpdate !== null && secondsSinceUpdate > 120) {
-      systemStatus = 'degraded';
+    if (!isMqttConfigured) {
+      systemStatus = 'error'; // MQTT not configured
     } else if (publishingPoints === 0) {
-      systemStatus = 'degraded';
+      systemStatus = 'degraded'; // No points enabled for publishing
+    } else if (!isMqttReceivingData) {
+      systemStatus = 'degraded'; // MQTT configured but no recent data
     } else {
-      systemStatus = 'operational';
+      systemStatus = 'operational'; // All good
     }
 
     // Build response
@@ -138,7 +146,10 @@ export async function GET() {
           mqtt: {
             broker: mqttConfig?.broker || 'Not configured',
             port: mqttConfig?.port || 1883,
-            enabled: mqttConfig?.enabled || false,
+            connected: mqttConnected,
+            configured: isMqttConfigured,
+            enableBatchPublishing: mqttConfig?.enableBatchPublishing || false,
+            allowRemoteControl: mqttConfig?.allowRemoteControl || false,
           },
           system: {
             timezone: systemSettings?.timezone || 'UTC',

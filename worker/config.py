@@ -19,7 +19,7 @@ class Config:
     BACNET_PORT: int = int(os.getenv('BACNET_PORT', '47808'))
 
     # MQTT
-    MQTT_BROKER: str = os.getenv('MQTT_BROKER', '10.0.60.50')
+    MQTT_BROKER: str = os.getenv('MQTT_BROKER', '10.0.60.3')
     MQTT_PORT: int = int(os.getenv('MQTT_PORT', '1883'))
     MQTT_CLIENT_ID: str = os.getenv('MQTT_CLIENT_ID', 'bacpipes_worker')
 

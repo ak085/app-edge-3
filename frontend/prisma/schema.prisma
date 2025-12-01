@@ -105,7 +105,7 @@ model MqttConfig {
   id                Int       @id @default(autoincrement())
 
   // Connection
-  broker            String    @default("10.0.60.50")
+  broker            String    @default("10.0.60.3")
   port              Int       @default(1883)
   clientId          String    @default("bacpipes_worker")
   username          String?
