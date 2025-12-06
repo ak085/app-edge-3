@@ -11,17 +11,14 @@ const activeConnections = new Map<string, mqtt.MqttClient>();
 /**
  * Resolve broker connection for frontend's Docker bridge network
  * Frontend cannot access 'localhost' (would resolve to frontend container)
- * Maps localhost → mqtt-broker (Docker service name)
- * Maps host port → container port (1884 → 1883)
- * External brokers are used as-is
+ * External brokers (IP addresses) are used as configured
+ * NOTE: BacPipes uses external MQTT broker architecture - localhost is not supported
  */
 function resolveBrokerForFrontend(dbBroker: string, dbPort: number): { broker: string; port: number } {
-  // Localhost aliases: map to internal Docker service
+  // Localhost is not supported in current architecture
+  // Frontend runs in Docker and needs external broker IP (e.g., 10.0.60.3)
   if (dbBroker === 'localhost' || dbBroker === '127.0.0.1') {
-    return {
-      broker: 'mqtt-broker',
-      port: 1883  // Internal container port (not host-mapped 1884)
-    };
+    throw new Error('Localhost MQTT broker is not supported. Please configure an external broker IP address in Settings.');
   }
   // External broker: use as configured
   return {

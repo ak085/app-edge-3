@@ -131,31 +131,6 @@ model MqttConfig {
 }
 
 // ============================================
-// InfluxDB Configuration
-// ============================================
-
-model InfluxConfig {
-  id                Int       @id @default(autoincrement())
-
-  // Connection
-  host              String    @default("10.0.60.5")
-  port              Int       @default(8086)
-  organization      String?   @default("bacnet")
-  bucket            String?   @default("bacnet_data")
-  token             String?
-
-  // Retention
-  retentionDays     Int       @default(30)
-
-  // Status
-  enabled           Boolean   @default(false)  // Optional feature
-
-  // Timestamps
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-}
-
-// ============================================
 // Write Command History
 // ============================================
 

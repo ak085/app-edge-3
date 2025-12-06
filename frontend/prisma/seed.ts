@@ -21,21 +21,6 @@ async function main() {
   })
   console.log('✅ MQTT config:', mqttConfig)
 
-  // Seed InfluxDB Configuration
-  const influxConfig = await prisma.influxConfig.upsert({
-    where: { id: 1 },
-    update: {},
-    create: {
-      host: process.env.INFLUX_HOST || '10.0.60.5',
-      port: parseInt(process.env.INFLUX_PORT || '8086'),
-      organization: process.env.INFLUX_ORG || 'bacnet',
-      bucket: process.env.INFLUX_BUCKET || 'bacnet_data',
-      retentionDays: 30,
-      enabled: false,  // Optional feature, disabled by default
-    },
-  })
-  console.log('✅ InfluxDB config:', influxConfig)
-
   // Seed System Settings
   const systemSettings = await prisma.systemSettings.upsert({
     where: { id: 1 },

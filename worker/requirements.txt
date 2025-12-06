@@ -15,6 +15,3 @@ python-dotenv==1.0.0
 
 # Timezone handling
 pytz==2024.1
-
-# InfluxDB (optional)
-influxdb-client==1.49.0

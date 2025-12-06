@@ -11,6 +11,6 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
 })
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma
-}
+// Always store singleton to prevent connection pool exhaustion
+// This is critical in both development AND production
+globalForPrisma.prisma = prisma

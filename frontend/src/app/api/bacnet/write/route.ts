@@ -6,15 +6,17 @@ import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Resolve broker connection for frontend's Docker bridge network
- * Same logic as monitoring stream endpoint
+ * Frontend cannot access 'localhost' (would resolve to frontend container)
+ * External brokers (IP addresses) are used as configured
+ * NOTE: BacPipes uses external MQTT broker architecture - localhost is not supported
  */
 function resolveBrokerForFrontend(dbBroker: string, dbPort: number): { broker: string; port: number } {
+  // Localhost is not supported in current architecture
+  // Frontend runs in Docker and needs external broker IP (e.g., 10.0.60.3)
   if (dbBroker === 'localhost' || dbBroker === '127.0.0.1') {
-    return {
-      broker: 'mqtt-broker',
-      port: 1883  // Internal container port
-    };
+    throw new Error('Localhost MQTT broker is not supported. Please configure an external broker IP address in Settings.');
   }
+  // External broker: use as configured
   return {
     broker: dbBroker,
     port: dbPort

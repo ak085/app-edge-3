@@ -285,6 +285,53 @@ BacPipes/
 
 ## Recent Updates
 
+### 2025-12-06: Cleanup of Legacy Services & Code
+
+**Major Cleanup: Removed Unused Services and Legacy Code**
+
+#### Services Removed:
+1. **Grafana** - Legacy visualization service (replaced by custom monitoring dashboard)
+   - Removed from `docker-compose-monitoring.yml`
+   - Removed environment variables from `.env.example`
+   - Stopped and removed running container
+   - Deleted Docker volumes (~500MB freed)
+   - Removed `grafana/` directory
+
+2. **Orphaned MQTT Broker Container** - Internal broker no longer used
+   - Container `mqtt-broker-local` was running but not defined in compose files
+   - Leftover from migration to external MQTT broker architecture
+   - Removed container and 10+ associated Docker volumes
+   - Freed ~500MB disk space
+
+3. **InfluxDB Integration** - Abandoned optional feature
+   - Removed `InfluxConfig` model from Prisma schema
+   - Removed InfluxDB seeding from seed file
+   - Removed `influxdb-client` Python package from worker requirements
+   - Removed environment variables from `.env` and `.env.example`
+   - Dropped `InfluxConfig` table from database
+   - Current architecture uses TimescaleDB exclusively
+
+4. **Docker Infrastructure Cleanup**
+   - Removed orphaned network: `bacpipes_remote-db-network`
+   - Removed 10+ orphaned MQTT volumes
+   - Total disk space freed: ~500MB
+
+#### Code Fixes:
+- **Frontend MQTT Broker Resolution** - Fixed hardcoded `mqtt-broker` service references
+  - Updated `frontend/src/app/api/monitoring/stream/route.ts`
+  - Updated `frontend/src/app/api/bacnet/write/route.ts`
+  - Localhost now explicitly not supported (throws clear error message)
+  - Frontend requires external broker IP addresses only (e.g., 10.0.60.3)
+
+#### Impact:
+- **1 fewer running container** (from 7 to 6)
+- **500MB+ disk space freed**
+- **Cleaner codebase** (removed dead code and unused models)
+- **Better error messages** for localhost broker misconfiguration
+- **Simplified architecture** (external MQTT only, no legacy code paths)
+
+---
+
 ### 2025-12-01: MQTT Broker Flexibility & Graceful Degradation
 
 **Major Enhancement: Flexible MQTT Architecture**
@@ -393,5 +440,5 @@ For detailed deployment instructions, see README.md.
 
 ---
 
-**Last Updated**: 2025-12-01
+**Last Updated**: 2025-12-06
 **Status**: Production-ready for single-site deployment with flexible MQTT broker support

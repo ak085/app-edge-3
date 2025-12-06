@@ -71,39 +71,6 @@ services:
     network_mode: host
     restart: unless-stopped
 
-  # Grafana - Professional time-series visualization (better suited for large datasets)
-  grafana:
-    image: grafana/grafana-oss:latest
-    container_name: bacpipes-grafana
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-    ports:
-      - "3004:3000"
-    environment:
-      # Grafana settings
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_SERVER_ROOT_URL: http://localhost:3004
-      GF_INSTALL_PLUGINS: ""
-      # Pre-configure TimescaleDB datasource
-      GF_DATABASE_TYPE: postgres
-      GF_DATABASE_HOST: timescaledb:5432
-      GF_DATABASE_NAME: ${TIMESCALEDB_DB:-timescaledb}
-      GF_DATABASE_USER: ${POSTGRES_USER:-anatoli}
-      GF_DATABASE_PASSWORD: ""
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-    networks:
-      - bacpipes-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
 # Connect to existing network created by core docker-compose.yml
 networks:
   bacpipes-network:
@@ -115,5 +82,3 @@ volumes:
   timescaledb_data:
     external: true
     name: bacpipes_timescaledb_data
-  grafana_data:
-    driver: local
