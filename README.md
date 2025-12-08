@@ -41,16 +41,17 @@
 git clone http://10.0.10.2:30008/ak101/app-bacnet-local.git
 cd BacPipes
 
-# 2. Configure environment
+# 2. Configure environment (OPTIONAL - auto-detects IP if not set)
 cp .env.example .env
-nano .env  # Edit BACNET_IP and MQTT_BROKER
+# nano .env  # Only needed for custom database settings
 
 # 3. Deploy
 docker compose up -d
 docker compose -f docker-compose-monitoring.yml up -d
 
-# 4. Access UI
+# 4. Access UI and configure via Settings GUI
 # Discovery & Config: http://<your-ip>:3001
+# Settings: http://<your-ip>:3001/settings
 ```
 
 ### Common Commands
@@ -67,8 +68,9 @@ docker compose -f docker-compose-monitoring.yml up -d
 ### First-Time Workflow
 
 1. **Configure Settings** → http://localhost:3001/settings
-   - Set BACnet IP (your local IP on BACnet network)
-   - Set MQTT Broker IP (external broker or 10.0.60.3 default)
+   - BACnet IP: Auto-detected (or set manually if needed)
+   - MQTT Broker IP: Configure your external broker
+   - Save settings
    - **Restart worker:** `docker compose restart bacnet-worker`
 
 2. **Discover Devices** → http://localhost:3001/discovery
@@ -83,6 +85,8 @@ docker compose -f docker-compose-monitoring.yml up -d
 4. **Monitor Data** → http://localhost:3001/monitoring
    - Real-time MQTT stream
    - Dashboard: http://localhost:3003
+
+**Note:** All configuration is stored in database and managed via Settings GUI. The `.env` file is optional and only needed for database connection settings.
 
 ---
 
@@ -182,32 +186,46 @@ git branch -a
 git checkout development  # or main for production
 ```
 
-### Step 3: Configure Environment
+### Step 3: Configure Environment (Optional)
 
 ```bash
-# Copy template
+# Copy template (OPTIONAL - only needed for custom database settings)
 cp .env.example .env
 
-# Edit configuration
-nano .env
+# Edit configuration (NOT REQUIRED - configure via Settings GUI instead)
+# nano .env
 ```
 
-**Required Settings:**
+**IMPORTANT: Configuration is now database-driven!**
+
+All BACnet and MQTT settings are configured via the **Settings GUI** at http://localhost:3001/settings.
+The system **auto-detects your BACnet IP** if not configured.
+
+**Optional `.env` settings (only for advanced customization):**
 
 ```bash
-# BACnet Configuration
-BACNET_IP=192.168.1.35        # YOUR local IP on BACnet network
-BACNET_PORT=47808              # Standard BACnet/IP port
-BACNET_DEVICE_ID=3001234       # Unique device ID
+# Database (only change if using custom setup)
+POSTGRES_USER=anatoli
+POSTGRES_DB=bacpipes
 
-# MQTT Broker
-MQTT_BROKER=10.0.60.3          # YOUR MQTT broker IP
-MQTT_PORT=1883                 # Standard MQTT port
+# BACnet Configuration (OPTIONAL - auto-detected or set via Settings GUI)
+# BACNET_IP=192.168.1.35
+# BACNET_PORT=47808
+# BACNET_DEVICE_ID=3001234
+
+# MQTT Broker (OPTIONAL - configured via Settings GUI)
+# MQTT_BROKER=10.0.60.3
+# MQTT_PORT=1883
 
 # System
 TZ=Asia/Kuala_Lumpur           # YOUR timezone
 NODE_ENV=production            # production or development
 ```
+
+**Configuration Priority:**
+1. **Database Settings** (via Settings GUI) - Primary source
+2. **Auto-detection** (for BACnet IP)
+3. Environment variables (.env) - Fallback only
 
 ### Step 4: Deploy Services
 
@@ -235,12 +253,14 @@ http://192.168.1.35:3001
 ```
 
 **2. Configure System Settings:**
-- Navigate to **Settings** page
-- Verify/update BACnet IP address
-- Configure MQTT broker IP (must match your network)
-- Set timezone
-- Save settings
-- **Restart worker:** `docker compose restart bacnet-worker`
+- Navigate to **Settings** page (http://your-ip:3001/settings)
+- **BACnet IP**: Auto-detected (verify it's correct, or update manually)
+- **MQTT Broker IP**: Enter your MQTT broker's IP address
+- **Timezone**: Set your local timezone
+- Click **Save Settings**
+- **Restart worker to apply:** `docker compose restart bacnet-worker`
+
+**Note:** All configuration is now stored in the database. No need to edit `.env` file!
 
 **3. Discover BACnet Devices:**
 - Go to **Discovery** page

@@ -338,6 +338,41 @@ For existing deployments:
 
 ---
 
+### 2025-12-08 (Part 2): Legacy Code Cleanup
+
+**Cleanup: Removed Unused Files and Docker Resources**
+
+#### Files Removed (974 lines, ~27KB):
+1. **worker/main.py** (32 lines) - Unused M4 milestone placeholder
+   - Never executed (superseded by `mqtt_publisher.py`)
+   - Was being copied into Docker image unnecessarily
+
+2. **worker/config.py** (29 lines) - Unused configuration class
+   - `mqtt_publisher.py` has its own config loading logic
+   - Duplicate/confusing code
+
+3. **REMOVE_BATCH_PUBLISHING.md** (27KB) - Legacy documentation
+   - Instructions for removing a feature
+   - No longer needed in repository
+
+#### Docker Resources Cleaned:
+- **test-postgres container** - Leftover from Dec 7 testing session
+- **Anonymous volume** (2816606d...) - Orphaned, not attached to any service
+
+#### Benefits:
+- **Cleaner Docker images**: Legacy files no longer copied into worker container
+- **Less confusion**: No duplicate/unused code in codebase
+- **Smaller repository**: 27KB reduction
+- **Cleaner Docker environment**: No orphaned resources
+
+#### Files Retained (Active):
+- ✓ `worker/mqtt_publisher.py` - Main worker (active)
+- ✓ `worker/discovery.py` - BACnet discovery (active)
+- ✓ `worker/job_processor.py` - Discovery job handler (active)
+- ✓ `telegraf/` and `timescaledb/` - Optional monitoring stack (active)
+
+---
+
 ### 2025-12-07: Monitoring Dashboard Removal & BACnet Discovery Fix
 
 **Monitoring Dashboard Removed** - Redundant visualization service
