@@ -192,6 +192,80 @@ class MqttPublisher:
             self.enable_batch_publishing = False
             return False
 
+    def _auto_detect_local_ip(self):
+        """Auto-detect local IP address for BACnet interface"""
+        import socket
+        try:
+            # Create a socket and connect to external address to determine local IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            return local_ip
+        except Exception:
+            # Fallback: try to get from hostname
+            try:
+                hostname = socket.gethostname()
+                local_ip = socket.gethostbyname(hostname)
+                if local_ip and not local_ip.startswith('127.'):
+                    return local_ip
+            except Exception:
+                pass
+            return None
+
+    def load_bacnet_config(self):
+        """Load BACnet configuration from database SystemSettings"""
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute('SELECT "bacnetIp", "bacnetPort", "bacnetDeviceId" FROM "SystemSettings" LIMIT 1')
+            result = cursor.fetchone()
+            cursor.close()
+
+            if result:
+                # Override with database settings (Settings GUI is source of truth)
+                db_ip = result['bacnetIp']
+                db_port = result['bacnetPort']
+                db_device_id = result['bacnetDeviceId']
+
+                # Use database IP if provided and valid
+                if db_ip and db_ip.strip():
+                    self.bacnet_ip = db_ip
+                else:
+                    # Auto-detect if not configured
+                    detected_ip = self._auto_detect_local_ip()
+                    if detected_ip:
+                        self.bacnet_ip = detected_ip
+                        logger.info(f"🔍 Auto-detected BACnet IP: {self.bacnet_ip}")
+                    # else: keep environment default
+
+                self.bacnet_port = db_port if db_port else self.bacnet_port
+                self.bacnet_device_id = db_device_id if db_device_id else self.bacnet_device_id
+
+                logger.info(f"📋 BACnet Config from database:")
+                logger.info(f"   - Interface: {self.bacnet_ip}:{self.bacnet_port}")
+                logger.info(f"   - Device ID: {self.bacnet_device_id}")
+            else:
+                logger.warning("⚠️  No BACnet config found in database, using environment defaults")
+                # Try auto-detection as fallback
+                detected_ip = self._auto_detect_local_ip()
+                if detected_ip and detected_ip != self.bacnet_ip:
+                    logger.info(f"🔍 Auto-detected BACnet IP: {detected_ip} (overriding env: {self.bacnet_ip})")
+                    self.bacnet_ip = detected_ip
+
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to load BACnet config: {e}")
+            logger.warning("⚠️  Using environment defaults")
+            # Try auto-detection as last resort
+            try:
+                detected_ip = self._auto_detect_local_ip()
+                if detected_ip:
+                    logger.info(f"🔍 Auto-detected BACnet IP: {detected_ip}")
+                    self.bacnet_ip = detected_ip
+            except Exception:
+                pass
+            return False
+
     def connect_mqtt(self):
         """Connect to MQTT broker (graceful degradation - doesn't fail startup)"""
         try:
@@ -913,6 +987,9 @@ class MqttPublisher:
 
         # Load MQTT configuration from database
         self.load_mqtt_config()
+
+        # Load BACnet configuration from database
+        self.load_bacnet_config()
 
         if not self.connect_mqtt():
             logger.error("Cannot start without MQTT connection")

@@ -11,18 +11,16 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-anatoli}
       POSTGRES_DB: ${TIMESCALEDB_DB:-timescaledb}
       POSTGRES_HOST_AUTH_METHOD: trust
-    ports:
-      - "5435:5432"
+      PGPORT: 5435
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./timescaledb/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli} -p 5435"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - bacpipes-network
+    network_mode: host
     restart: unless-stopped
 
   # Telegraf - MQTT to TimescaleDB data pipeline (custom Python bridge)
@@ -48,14 +46,7 @@ services:
     network_mode: host
     restart: unless-stopped
 
-# Connect to existing network created by core docker-compose.yml
-networks:
-  bacpipes-network:
-    external: true
-    name: bacpipes_bacpipes-network
-
-# Reuse existing TimescaleDB volume
+# TimescaleDB volume
 volumes:
   timescaledb_data:
-    external: true
-    name: bacpipes_timescaledb_data
+    driver: local

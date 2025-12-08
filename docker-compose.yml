@@ -1,28 +1,26 @@
-# BacPipes Core Services
-# Critical 24/7 BACnet polling and MQTT publishing
-# MQTT Broker: External at 10.0.60.3:1883 (separate LXC container)
-# See MIGRATION_TO_MODULAR_ARCHITECTURE.md for migration details
-# See docker-compose-monitoring.yml for monitoring services
+# BacPipes Core Services - Portable Edge Data Collection
+# BACnet polling and MQTT publishing with database-driven configuration
+# - BACnet IP: Auto-detected or configured via Settings GUI
+# - MQTT Broker: Configured via Settings GUI (database-first architecture)
+# See docker-compose-monitoring.yml for optional monitoring services
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15
     container_name: bacpipes-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-anatoli}
       POSTGRES_DB: ${POSTGRES_DB:-bacpipes}
       POSTGRES_HOST_AUTH_METHOD: trust
-    ports:
-      - "5434:5432"
+      PGPORT: 5434
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli} -p 5434"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - bacpipes-network
+    network_mode: host
     restart: unless-stopped
 
   frontend:
@@ -33,14 +31,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "3001:3000"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-anatoli}@postgres:5432/${POSTGRES_DB:-bacpipes}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-anatoli}@localhost:5434/${POSTGRES_DB:-bacpipes}
       NODE_ENV: production
       TZ: ${TZ:-Asia/Kuala_Lumpur}
-    networks:
-      - bacpipes-network
+      PORT: 3001
+    network_mode: host
     restart: unless-stopped
 
   bacnet-worker:
@@ -54,18 +50,21 @@ services:
       frontend:
         condition: service_started
     environment:
-      # Database connection
-      DB_HOST: localhost     # Host networking: access postgres via host-exposed port
-      DB_PORT: 5434          # Host-exposed PostgreSQL port
+      # Database connection (required)
+      DB_HOST: localhost
+      DB_PORT: 5434
       DB_NAME: ${POSTGRES_DB:-bacpipes}
       DB_USER: ${POSTGRES_USER:-anatoli}
-      DB_PASSWORD: ""        # Trust authentication
-      # BACnet configuration
-      BACNET_IP: ${BACNET_IP:-192.168.1.35}
+      DB_PASSWORD: ""
+      # BACnet configuration (OPTIONAL - loaded from database SystemSettings)
+      # Worker auto-detects IP if not configured. Set via Settings GUI instead.
+      BACNET_IP: ${BACNET_IP:-}              # Auto-detected if empty
       BACNET_PORT: ${BACNET_PORT:-47808}
-      # MQTT configuration (external broker on LXC container 10.0.60.3)
-      MQTT_BROKER: ${MQTT_BROKER:-10.0.60.3}  # External MQTT broker
-      MQTT_PORT: ${MQTT_PORT:-1883}           # Standard MQTT port
+      BACNET_DEVICE_ID: ${BACNET_DEVICE_ID:-3001234}
+      # MQTT configuration (OPTIONAL - loaded from database MqttConfig)
+      # Configure via Settings GUI instead of environment variables
+      MQTT_BROKER: ${MQTT_BROKER:-}          # Loaded from database
+      MQTT_PORT: ${MQTT_PORT:-1883}
       MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-bacpipes_worker}
       # Polling configuration
       POLL_INTERVAL: ${POLL_INTERVAL:-60}

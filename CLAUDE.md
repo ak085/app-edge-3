@@ -1,13 +1,16 @@
 # BacPipes - BACnet Discovery & MQTT Publishing Platform
 
-## Current Status (2025-12-01)
+## Current Status (2025-12-08)
 
-**Production Ready**: Full-stack Docker Compose application for BACnet point discovery, configuration, and MQTT publishing with flexible MQTT broker support.
+**Production Ready**: Portable full-stack Docker Compose application for BACnet point discovery, configuration, and MQTT publishing with database-driven configuration.
 
 **Completed Features**:
 - ✅ BACnet device/point discovery with web UI
 - ✅ Haystack tagging system (8-field semantic naming)
 - ✅ MQTT publishing to external broker (modular architecture)
+- ✅ **Portable deployment** - Auto-detects IP, database-driven config
+- ✅ **Database-first architecture** - BACnet & MQTT config from DB, not .env
+- ✅ **IP auto-detection** - No hardcoded IPs, works on any server
 - ✅ **Flexible MQTT broker** - Works with any broker on any network
 - ✅ **Graceful degradation** - App works even without MQTT broker
 - ✅ **Real-time MQTT status** - Dashboard shows connection status (🟢/🔴)
@@ -273,6 +276,67 @@ BacPipes/
 ```
 
 ## Recent Updates
+
+### 2025-12-08: Portable Deployment - Database-Driven Configuration
+
+**Major Enhancement: Removed IP Hardcoding, Database-First Architecture**
+
+#### Root Cause Fixed:
+- **Issue**: Hardcoded `BACNET_IP` in `.env` (192.168.1.35) didn't match actual server IP (192.168.1.32)
+- **Impact**: All BACnet reads failed, no MQTT messages published, monitoring page showed sandclock
+- **Duration**: Affected deployments when server IP changed or during multi-server deployments
+
+#### Changes Implemented:
+1. **Database-Driven BACnet Configuration**
+   - Added `load_bacnet_config()` function in worker (similar to existing `load_mqtt_config()`)
+   - Worker now reads BACnet IP, port, and device ID from `SystemSettings` table
+   - Database is source of truth, environment variables are fallbacks only
+   - File: `worker/mqtt_publisher.py:216-267`
+
+2. **IP Auto-Detection**
+   - Added `_auto_detect_local_ip()` helper function
+   - Automatically detects server's IP address if not configured in database
+   - Uses socket connection test to determine correct network interface
+   - Fallback: hostname resolution if socket method fails
+   - File: `worker/mqtt_publisher.py:195-214`
+
+3. **Removed Hardcoded Values**
+   - Updated `.env` - all BACnet/MQTT settings now commented out (optional fallbacks)
+   - Updated `.env.example` - clear documentation that DB is primary source
+   - Updated `docker-compose.yml` - environment variables optional, defaults to empty for auto-detection
+   - Files: `.env:13-27`, `.env.example:16-33`, `docker-compose.yml:59-68`
+
+4. **Configuration Priority**:
+   ```
+   1. Database SystemSettings/MqttConfig (Primary - configured via Settings GUI)
+   2. Auto-detection (for BACnet IP if not in DB)
+   3. Environment variables (Fallback only)
+   4. Hardcoded defaults (Last resort)
+   ```
+
+#### Benefits:
+- **Portable**: Copy repo to any Debian/Ubuntu LXC, auto-detects IP
+- **Multi-Server**: Deploy to multiple servers with different IPs without editing .env
+- **GUI-Driven**: All configuration via Settings page, no manual file editing
+- **No Restart Needed** (for future): Foundation for dynamic config reload
+- **Debugging**: Clear logs show config source (DB, auto-detect, or env fallback)
+
+#### Testing Verified:
+- Worker starts with empty `BACNET_IP` environment variable ✓
+- Loads IP from database `SystemSettings.bacnetIp` ✓
+- Falls back to auto-detection if DB value empty ✓
+- BACnet reads successful with DB-configured IP ✓
+- MQTT publishing working ✓
+- Monitoring page receives real-time data ✓
+
+#### Migration Guide:
+For existing deployments:
+1. Settings are already in database from Settings GUI ✓
+2. Simply git pull and restart - no manual config needed
+3. Worker will load from database automatically
+4. Can safely remove hardcoded IPs from .env
+
+---
 
 ### 2025-12-07: Monitoring Dashboard Removal & BACnet Discovery Fix
 
