@@ -56,6 +56,14 @@ services:
       DB_NAME: ${POSTGRES_DB:-bacpipes}
       DB_USER: ${POSTGRES_USER:-anatoli}
       DB_PASSWORD: ""
+
+      # TimescaleDB connection (optional - for direct historical writes)
+      TIMESCALEDB_HOST: ${TIMESCALEDB_HOST:-localhost}
+      TIMESCALEDB_PORT: ${TIMESCALEDB_PORT:-5435}
+      TIMESCALEDB_DB: ${TIMESCALEDB_DB:-timescaledb}
+      TIMESCALEDB_USER: ${TIMESCALEDB_USER:-anatoli}
+      TIMESCALEDB_PASSWORD: ${TIMESCALEDB_PASSWORD:-}
+
       # BACnet configuration (OPTIONAL - loaded from database SystemSettings)
       # Worker auto-detects IP if not configured. Set via Settings GUI instead.
       BACNET_IP: ${BACNET_IP:-}              # Auto-detected if empty
