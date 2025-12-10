@@ -27,7 +27,6 @@ interface Point {
   equipmentType?: string | null;
   equipmentId?: string | null;
   pointFunction?: string | null;
-  pointType?: string | null;
   quantity?: string | null;
   subject?: string | null;
   location?: string | null;
