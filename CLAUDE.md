@@ -15,6 +15,7 @@
 - ✅ **Graceful degradation** - App works even without MQTT broker
 - ✅ **Real-time MQTT status** - Dashboard shows connection status (🟢/🔴)
 - ✅ TimescaleDB time-series storage
+- ✅ **CSV/JSON Export** - Historical data export from TimescaleDB with UI
 - ✅ BACnet write command support (priority array control)
 - ✅ Site-to-remote data synchronization
 - ✅ Production-optimized deployment (99.6% memory reduction)
@@ -180,6 +181,24 @@ docker compose down -v
 docker compose -f docker-compose-monitoring.yml down -v
 ```
 
+### Data Export
+```bash
+# Export historical sensor data via Monitoring page UI:
+# 1. Navigate to http://your-ip:3001/monitoring
+# 2. Scroll to "Export Historical Data" section
+# 3. Select time range (quick presets or custom)
+# 4. Select format (CSV or JSON)
+# 5. Optional: filter by specific point
+# 6. Click "Export Historical Data"
+
+# Export via API (for automation):
+# Export last 24 hours as CSV
+curl "http://your-ip:3001/api/timeseries/export?start=2025-12-09T00:00:00Z&end=2025-12-10T00:00:00Z&format=csv" -o export.csv
+
+# Export specific point as JSON
+curl "http://your-ip:3001/api/timeseries/export?start=2025-12-09T00:00:00Z&end=2025-12-10T00:00:00Z&haystackName=duxton.ahu.1.sensor.pressure.air.supply.actual&format=json" -o export.json
+```
+
 ### MQTT Testing
 ```bash
 # Subscribe to all topics
@@ -276,6 +295,37 @@ BacPipes/
 ```
 
 ## Recent Updates
+
+### 2025-12-10: BACnet Discovery Fix & CSV/JSON Export
+
+**BACnet Discovery Port Conflict Fixed**
+- **Issue**: Discovery was finding 0 devices due to port 47808 conflict between mqtt_publisher and discovery processes
+- **Root Cause**: Both processes trying to bind to same BACnet port simultaneously (OSError: Address already in use)
+- **Solution**: Implemented file-based lock coordination using /tmp/bacnet_discovery_active
+  - mqtt_publisher detects lock file and gracefully shuts down BACnet app
+  - discovery waits for port release (max 10s timeout)
+  - discovery runs normally, then removes lock
+  - mqtt_publisher detects lock removal and restarts BACnet app
+- **Result**: Discovery now finds devices successfully (2 devices, ~50 points verified)
+- **Files Modified**: `worker/mqtt_publisher.py`, `worker/discovery.py`
+
+**CSV/JSON Export Feature Added**
+- **New Feature**: Export historical sensor data from TimescaleDB
+- **Backend API**: GET /api/timeseries/export with query parameters
+  - Parameters: start (ISO 8601), end (ISO 8601), haystackName (optional), format (csv|json)
+  - Safety limit: 10,000 rows per export
+  - Proper CSV escaping for commas, quotes, newlines
+  - File download with Content-Disposition header
+- **Frontend UI**: "Export Historical Data" card on Monitoring page
+  - Quick time presets: 1h, 6h, 12h, 24h, 7d, 30d
+  - Custom date/time range picker
+  - Point filter dropdown
+  - Format selector (CSV/JSON)
+- **Configuration**: Added TIMESCALEDB_* environment variables to docker-compose.yml frontend service
+- **Files Added**: `frontend/src/app/api/timeseries/export/route.ts`
+- **Files Modified**: `frontend/src/app/monitoring/page.tsx`, `docker-compose.yml`, `.env`, `frontend/.env`
+
+---
 
 ### 2025-12-08: Portable Deployment - Database-Driven Configuration
 
@@ -591,5 +641,5 @@ For detailed deployment instructions, see README.md.
 
 ---
 
-**Last Updated**: 2025-12-09
+**Last Updated**: 2025-12-10
 **Status**: Production-ready for single-site deployment with flexible MQTT broker support
