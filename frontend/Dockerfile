@@ -3,8 +3,8 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install dependencies (including devDependencies for build)
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json package-lock.json* ./
+RUN npm install
 
 # Copy application files
 COPY . .

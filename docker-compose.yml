@@ -36,6 +36,12 @@ services:
       NODE_ENV: production
       TZ: ${TZ:-Asia/Kuala_Lumpur}
       PORT: 3001
+      # TimescaleDB connection (for CSV export)
+      TIMESCALEDB_HOST: ${TIMESCALEDB_HOST:-localhost}
+      TIMESCALEDB_PORT: ${TIMESCALEDB_PORT:-5435}
+      TIMESCALEDB_DB: ${TIMESCALEDB_DB:-timescaledb}
+      TIMESCALEDB_USER: ${TIMESCALEDB_USER:-anatoli}
+      TIMESCALEDB_PASSWORD: ${TIMESCALEDB_PASSWORD:-}
     network_mode: host
     restart: unless-stopped
 

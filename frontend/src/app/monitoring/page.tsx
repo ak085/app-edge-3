@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import {
   Activity, Wifi, WifiOff, Search, Pause, Play, X, Edit,
-  BarChart3, Filter as FilterIcon
+  BarChart3, Filter as FilterIcon, Download
 } from 'lucide-react';
 
 interface MqttMessage {
@@ -87,6 +87,14 @@ export default function MonitoringPage() {
     type: null,
     message: '',
   });
+
+  // Export state
+  const [exportStartTime, setExportStartTime] = useState('');
+  const [exportEndTime, setExportEndTime] = useState('');
+  const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
+  const [exportPointFilter, setExportPointFilter] = useState<string>(''); // empty = all points
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -326,6 +334,54 @@ export default function MonitoringPage() {
     }
   };
 
+  // Set quick time preset for export
+  const setQuickPreset = (hours: number) => {
+    const end = new Date();
+    const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
+    setExportEndTime(end.toISOString().slice(0, 16)); // Format: YYYY-MM-DDTHH:mm
+    setExportStartTime(start.toISOString().slice(0, 16));
+  };
+
+  // Handle export to CSV/JSON
+  const handleExport = async () => {
+    if (!exportStartTime || !exportEndTime) {
+      setExportError('Please select start and end times');
+      return;
+    }
+
+    // Validate time range
+    const start = new Date(exportStartTime);
+    const end = new Date(exportEndTime);
+
+    if (end <= start) {
+      setExportError('End time must be after start time');
+      return;
+    }
+
+    setExportLoading(true);
+    setExportError('');
+
+    try {
+      const params = new URLSearchParams({
+        start: start.toISOString(),
+        end: end.toISOString(),
+        format: exportFormat,
+      });
+
+      if (exportPointFilter) {
+        params.append('haystackName', exportPointFilter);
+      }
+
+      const url = `/api/timeseries/export?${params.toString()}`;
+      window.open(url, '_blank');
+
+      setExportLoading(false);
+    } catch (error) {
+      setExportError(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setExportLoading(false);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
@@ -393,6 +449,145 @@ export default function MonitoringPage() {
             <p className="text-lg font-semibold mt-2">{filteredMessages.length}</p>
             <p className="text-sm text-muted-foreground">Filtered</p>
           </div>
+        </div>
+      </div>
+
+      {/* Export Historical Data Card */}
+      <div className="card bg-card p-6 rounded-lg border-2 border-border mb-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Download className="w-6 h-6 text-blue-500" />
+          <h2 className="text-xl font-semibold">Export Historical Data</h2>
+        </div>
+
+        {/* Quick Presets */}
+        <div className="mb-4">
+          <p className="text-sm font-medium mb-2">Quick Time Ranges:</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setQuickPreset(1)}
+              className="px-3 py-1 text-sm rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300"
+            >
+              Last Hour
+            </button>
+            <button
+              onClick={() => setQuickPreset(6)}
+              className="px-3 py-1 text-sm rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300"
+            >
+              Last 6 Hours
+            </button>
+            <button
+              onClick={() => setQuickPreset(24)}
+              className="px-3 py-1 text-sm rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300"
+            >
+              Last 24 Hours
+            </button>
+            <button
+              onClick={() => setQuickPreset(168)}
+              className="px-3 py-1 text-sm rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300"
+            >
+              Last 7 Days
+            </button>
+          </div>
+        </div>
+
+        {/* Export Form */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          {/* Start Time */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Start Time</label>
+            <input
+              type="datetime-local"
+              value={exportStartTime}
+              onChange={(e) => setExportStartTime(e.target.value)}
+              className="input w-full bg-background border-2 border-input px-3 py-2 rounded-md text-sm"
+            />
+          </div>
+
+          {/* End Time */}
+          <div>
+            <label className="block text-sm font-medium mb-1">End Time</label>
+            <input
+              type="datetime-local"
+              value={exportEndTime}
+              onChange={(e) => setExportEndTime(e.target.value)}
+              className="input w-full bg-background border-2 border-input px-3 py-2 rounded-md text-sm"
+            />
+          </div>
+
+          {/* Point Filter */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Point Filter</label>
+            <select
+              value={exportPointFilter}
+              onChange={(e) => setExportPointFilter(e.target.value)}
+              className="input w-full bg-background border-2 border-input px-3 py-2 rounded-md text-sm"
+            >
+              <option value="">All Points ({points.length})</option>
+              {points.map((point) => (
+                <option key={point.id} value={point.mqttTopic.split('/').slice(2).join('.')}>
+                  {point.dis || point.pointName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Format */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Format</label>
+            <div className="flex gap-4 items-center h-[42px]">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  value="csv"
+                  checked={exportFormat === 'csv'}
+                  onChange={(e) => setExportFormat(e.target.value as 'csv' | 'json')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">CSV</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  value="json"
+                  checked={exportFormat === 'json'}
+                  onChange={(e) => setExportFormat(e.target.value as 'csv' | 'json')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">JSON</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Export Button and Error */}
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleExport}
+            disabled={exportLoading || !exportStartTime || !exportEndTime || points.length === 0}
+            className="flex items-center gap-2 px-6 py-2 rounded-md font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" />
+            {exportLoading ? 'Exporting...' : 'Export Data'}
+          </button>
+
+          {exportError && (
+            <p className="text-sm text-red-600">
+              ⚠️ {exportError}
+            </p>
+          )}
+
+          {points.length === 0 && (
+            <p className="text-sm text-yellow-600">
+              ⚠️ No MQTT-enabled points available for export
+            </p>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="mt-4 p-3 bg-blue-50 rounded-md text-sm text-blue-800">
+          <p>
+            <strong>Note:</strong> Export is limited to 10,000 rows. For large time ranges, consider filtering by specific points.
+          </p>
         </div>
       </div>
 
