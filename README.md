@@ -141,6 +141,22 @@ docker compose -f docker-compose-monitoring.yml up -d
 
 ---
 
+## Port Configuration
+
+BacPipes uses `network_mode: host` for all services, which means services bind directly to localhost instead of Docker's bridge network. This is required for BACnet communication on the local network.
+
+**Port Allocation:**
+- **3001**: Frontend (Next.js web interface)
+- **5434**: PostgreSQL (configuration database) - **Note: NOT the default 5432**
+- **5435**: TimescaleDB (time-series data storage)
+- **47808**: BACnet worker (BACnet/IP protocol)
+
+**Important:** All `DATABASE_URL` values must use port **5434**, not 5432. This is configured in `docker-compose.yml` with `PGPORT: 5434` environment variable.
+
+If you encounter connection errors during deployment, verify that your `.env` files use the correct ports as shown in `.env.example`.
+
+---
+
 ## Detailed Installation Guide
 
 ### System Requirements
@@ -877,6 +893,91 @@ docker compose logs -f frontend
 # Monitoring logs
 docker compose -f docker-compose-monitoring.yml logs -f
 ```
+
+---
+
+## Troubleshooting
+
+### Frontend Container Exits Immediately
+
+**Symptom:** `docker compose logs frontend` shows "ETIMEDOUT" or "ECONNREFUSED" errors
+
+**Cause:** Database port mismatch - frontend trying to connect to port 5432 instead of 5434
+
+**Fix:**
+1. Ensure `frontend/.env` has the correct `DATABASE_URL`:
+   ```bash
+   DATABASE_URL="postgresql://anatoli@localhost:5434/bacpipes"
+   ```
+
+2. Verify root `.env` also uses port 5434
+
+3. Restart the frontend:
+   ```bash
+   docker compose restart frontend
+   ```
+
+### CSV Export Feature Fails
+
+**Symptom:** Export button times out or returns error when trying to download historical data
+
+**Cause:** TimescaleDB port or host mismatch
+
+**Fix:**
+1. Ensure `frontend/.env` has correct TimescaleDB settings:
+   ```bash
+   TIMESCALEDB_HOST=localhost
+   TIMESCALEDB_PORT=5435
+   ```
+
+2. Verify TimescaleDB is running:
+   ```bash
+   docker compose -f docker-compose-monitoring.yml ps
+   ```
+
+3. Restart the frontend:
+   ```bash
+   docker compose restart frontend
+   ```
+
+### Worker Crashes on Startup
+
+**Symptom:** `docker compose logs bacnet-worker` shows "No MQTT configuration found" or similar error
+
+**Cause:** Database not seeded with initial configuration
+
+**Solution:**
+Database seeding runs automatically on first startup. If it failed, you can manually seed:
+```bash
+docker exec bacpipes-frontend npx prisma db seed
+docker compose restart bacnet-worker
+```
+
+### Discovery Finds 0 Devices
+
+**Symptom:** Discovery completes but shows 0 devices found
+
+**Common Causes:**
+1. **Wrong BACnet IP** - Check Settings page, ensure IP matches your server's network interface
+2. **Firewall blocking** - BACnet uses UDP port 47808
+3. **Network isolation** - BACnet devices must be on same network as server
+
+**Fix:**
+1. Verify IP address in Settings page
+2. Check network connectivity:
+   ```bash
+   # On Debian/Ubuntu
+   ip addr show
+
+   # Ping a known BACnet device
+   ping [device-ip]
+   ```
+
+3. Check firewall rules:
+   ```bash
+   # Allow BACnet port
+   sudo ufw allow 47808/udp
+   ```
 
 ---
 

@@ -120,6 +120,34 @@ docker compose -f docker-compose-monitoring.yml up -d
 # Discovery/Configuration: http://192.168.1.35:3001
 ```
 
+## Fresh Deployment from Gitea
+
+To deploy BacPipes on a fresh Debian/Ubuntu server:
+
+```bash
+# Clone repository
+git clone http://10.0.10.2:30008/ak101/app-bacnet-local.git bacnet
+cd bacnet
+
+# Start services (database seeding happens automatically)
+docker compose up -d
+
+# Optional: Start monitoring stack (TimescaleDB + Telegraf)
+docker compose -f docker-compose-monitoring.yml up -d
+
+# Access UI
+# http://your-server-ip:3001
+```
+
+**What happens automatically:**
+- PostgreSQL starts on port 5434
+- Prisma migrations run
+- Database seeding creates initial MqttConfig and SystemSettings
+- Frontend becomes accessible at http://your-server-ip:3001
+- Worker starts and auto-detects BACnet IP (configure via Settings if needed)
+
+**Important:** Ensure `.env` files use port **5434** for PostgreSQL (not 5432). See Port Configuration section in README.md.
+
 ## Common Commands
 
 ### Service Management
