@@ -143,17 +143,27 @@ docker compose -f docker-compose-monitoring.yml up -d
 
 ## Port Configuration
 
-BacPipes uses `network_mode: host` for all services, which means services bind directly to localhost instead of Docker's bridge network. This is required for BACnet communication on the local network.
+BacPipes uses **bridge networking** for LXC container compatibility. Services communicate using Docker service names within the bridge network, while exposing specific ports to the host.
 
-**Port Allocation:**
-- **3001**: Frontend (Next.js web interface)
-- **5434**: PostgreSQL (configuration database) - **Note: NOT the default 5432**
-- **5435**: TimescaleDB (time-series data storage)
-- **47808**: BACnet worker (BACnet/IP protocol)
+**Port Allocation (Host → Container):**
+- **3001 → 3001**: Frontend (Next.js web interface)
+- **5434 → 5432**: PostgreSQL (configuration database)
+- **5435 → 5432**: TimescaleDB (time-series data storage)
+- **47808**: BACnet worker (internal only)
 
-**Important:** All `DATABASE_URL` values must use port **5434**, not 5432. This is configured in `docker-compose.yml` with `PGPORT: 5434` environment variable.
+**Connection Strings:**
+- **Inside containers**: Use service names (e.g., `postgres:5432`, `timescaledb:5432`)
+- **From host machine**: Use `localhost` with external ports (e.g., `localhost:5434`, `localhost:5435`)
 
-If you encounter connection errors during deployment, verify that your `.env` files use the correct ports as shown in `.env.example`.
+**LXC Container Compatibility:**
+This configuration works in unprivileged LXC containers (e.g., Proxmox) without requiring `nesting=1` or privileged mode. For host networking (BACnet auto-discovery on local network), you would need to enable LXC features:
+```bash
+# On Proxmox host (if you want host networking)
+pct set <container-id> -features nesting=1,keyctl=1
+pct reboot <container-id>
+```
+
+If you encounter connection errors during deployment, verify that your `.env` files use service names as shown in `.env.example`.
 
 ---
 

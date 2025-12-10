@@ -1,6 +1,8 @@
 # BacPipes Monitoring Stack
 # Separated from core services for resource isolation
 # See ARCHITECTURE_SPLIT.md for details
+#
+# NOTE: Uses bridge networking for LXC container compatibility
 
 services:
   # TimescaleDB - Time-series database for historical sensor data
@@ -11,16 +13,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-anatoli}
       POSTGRES_DB: ${TIMESCALEDB_DB:-timescaledb}
       POSTGRES_HOST_AUTH_METHOD: trust
-      PGPORT: 5435
+    ports:
+      - "5435:5432"
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./timescaledb/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli} -p 5435"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    network_mode: host
+    networks:
+      - bacpipes_bacpipes-network
     restart: unless-stopped
 
   # Telegraf - MQTT to TimescaleDB data pipeline (custom Python bridge)
@@ -33,18 +37,24 @@ services:
       timescaledb:
         condition: service_healthy
     environment:
-      # MQTT configuration (connects to mqtt-broker in core compose)
-      MQTT_BROKER: ${MQTT_BROKER:-localhost}
+      # MQTT configuration (connects to external broker)
+      MQTT_BROKER: ${MQTT_BROKER:-10.0.60.3}
       MQTT_PORT: ${MQTT_PORT:-1883}
       MQTT_CLIENT_ID_TELEGRAF: bacpipes_telegraf_edge
       # TimescaleDB connection
-      TIMESCALEDB_HOST: localhost
-      TIMESCALEDB_PORT: 5435
+      TIMESCALEDB_HOST: timescaledb
+      TIMESCALEDB_PORT: 5432
       TIMESCALEDB_DB: ${TIMESCALEDB_DB:-timescaledb}
       TIMESCALEDB_USER: ${POSTGRES_USER:-anatoli}
       TZ: ${TZ:-Asia/Kuala_Lumpur}
-    network_mode: host
+    networks:
+      - bacpipes_bacpipes-network
     restart: unless-stopped
+
+# Use the network from main docker-compose.yml
+networks:
+  bacpipes_bacpipes-network:
+    external: true
 
 # TimescaleDB volume
 volumes:
