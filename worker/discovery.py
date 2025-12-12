@@ -8,6 +8,7 @@ Based on scripts/01_discovery_production.py but database-driven.
 import asyncio
 import sys
 import socket
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
@@ -139,11 +140,13 @@ class DiscoveryApp(NormalApplication):
             print(f"      Error reading object {obj_id}: {e}")
 
 
-def is_port_in_use(port: int) -> bool:
-    """Check if a UDP port is currently in use"""
+def is_port_in_use(port: int, ip_address: str = '') -> bool:
+    """Check if a UDP port is currently in use on specific IP"""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.bind(('', port))
+            # Use SO_REUSEADDR to detect if port is truly available
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((ip_address, port))
             return False  # Port is available
     except OSError:
         return True  # Port is in use
@@ -233,18 +236,20 @@ async def discovery_main(job_id: str, ip_address: str, port: int, timeout: int, 
         lock_file.touch()
         print(f"🔒 Discovery lock created - signaling mqtt_publisher to release port {port}...")
 
-        # Wait for port to be released (check with socket)
-        max_wait = 10  # seconds
-        print(f"⏳ Waiting for port {port} to be released (max {max_wait}s)...")
+        # Wait for port to be released (check with socket on specific IP)
+        max_wait = 20  # seconds (increased for reliability with database query delays)
+        print(f"⏳ Waiting for port {port} on {ip_address} to be released (max {max_wait}s)...")
+        wait_start = time.time()
         for i in range(max_wait):
-            if not is_port_in_use(port):
-                print(f"✅ Port {port} is now available")
+            if not is_port_in_use(port, ip_address):
+                elapsed = time.time() - wait_start
+                print(f"✅ Port {port} on {ip_address} available after {elapsed:.2f}s")
                 break
             await asyncio.sleep(1)
             if (i + 1) % 3 == 0:  # Progress update every 3 seconds
                 print(f"   Still waiting... ({i + 1}s elapsed)")
         else:
-            error_msg = f"Timeout: mqtt_publisher did not release port {port} in {max_wait}s"
+            error_msg = f"Timeout: mqtt_publisher did not release port {port} on {ip_address} in {max_wait}s"
             print(f"❌ {error_msg}")
             raise Exception(error_msg)
 

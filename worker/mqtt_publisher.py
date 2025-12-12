@@ -78,8 +78,8 @@ class MqttPublisher:
         self.bacnet_device_id = int(os.getenv('BACNET_DEVICE_ID', '3056496'))
 
         # TimescaleDB configuration (for direct historical writes)
-        self.timescaledb_host = os.getenv('TIMESCALEDB_HOST', 'localhost')
-        self.timescaledb_port = int(os.getenv('TIMESCALEDB_PORT', '5435'))
+        self.timescaledb_host = os.getenv('TIMESCALEDB_HOST', 'timescaledb')
+        self.timescaledb_port = int(os.getenv('TIMESCALEDB_PORT', '5432'))
         self.timescaledb_db = os.getenv('TIMESCALEDB_DB', 'timescaledb')
         self.timescaledb_user = os.getenv('TIMESCALEDB_USER', 'anatoli')
         self.timescaledb_password = os.getenv('TIMESCALEDB_PASSWORD', '')
@@ -1163,8 +1163,14 @@ class MqttPublisher:
                     # Discovery is running - shutdown BACnet app to release port
                     if self.bacnet_app:
                         logger.info("🔒 Discovery lock detected - shutting down BACnet application...")
+                        try:
+                            start_close = time.time()
+                            self.bacnet_app.close()
+                            close_duration = time.time() - start_close
+                            logger.info(f"✅ BACnet app closed in {close_duration:.3f}s - port 47808 released for discovery")
+                        except Exception as e:
+                            logger.warning(f"   Error closing BACnet app: {e}")
                         self.bacnet_app = None
-                        logger.info("✅ BACnet application shutdown - port 47808 released for discovery")
 
                     # Wait for discovery to complete (check again in 1 second)
                     await asyncio.sleep(1)
@@ -1191,8 +1197,8 @@ class MqttPublisher:
             except Exception as e:
                 logger.error(f"Error in poll cycle: {e}", exc_info=True)
 
-            # Check again in 5 seconds
-            await asyncio.sleep(5)
+            # Check again in 1 second (faster lock detection for discovery coordination)
+            await asyncio.sleep(1)
 
         # Cleanup
         logger.info("Shutting down gracefully...")
