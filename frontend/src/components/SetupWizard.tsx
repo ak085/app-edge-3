@@ -232,7 +232,7 @@ export default function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
                   className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Leave empty if you don't have an MQTT broker yet (you can configure it later in Settings)
+                  Leave empty if you don&apos;t have an MQTT broker yet (you can configure it later in Settings)
                 </p>
               </div>
 
