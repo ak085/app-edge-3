@@ -808,7 +808,7 @@ export default function PointsPage() {
                           </div>
                           <div className="text-xs text-muted-foreground">
                             <span className="font-mono">{point.objectType.replace('analog-', 'A').replace('binary-', 'B').replace('-input', 'I').replace('-output', 'O').replace('-value', 'V').toUpperCase()}:{point.objectInstance}</span>
-                            <span className="ml-1">• {point.pointName.split('_')[0]}</span>
+                            <span className="ml-1">• {point.equipmentType?.toUpperCase() || point.device.deviceName}</span>
                           </div>
                         </td>
                         <td className="px-3 py-3 text-sm font-mono">
