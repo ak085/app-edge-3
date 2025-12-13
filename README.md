@@ -90,6 +90,95 @@ docker compose -f docker-compose-monitoring.yml up -d
 
 ---
 
+## Fresh LXC Deployment (Proxmox/VE)
+
+BacPipes works seamlessly in LXC containers with proper features enabled.
+
+### LXC Prerequisites
+
+**On Proxmox host**, enable container features for BACnet host networking:
+
+```bash
+# Edit container config
+nano /etc/pve/lxc/<CTID>.conf
+
+# Add this line:
+features: nesting=1,keyctl=1
+
+# Reboot container
+pct reboot <CTID>
+```
+
+**Why needed**: BACnet discovery uses UDP broadcasts (port 47808) requiring host networking.
+
+### Deployment Steps
+
+```bash
+# 1. Clone repository (inside LXC container)
+git clone http://10.0.10.2:30008/ak101/app-bacnet-local.git bacnet
+cd bacnet
+
+# 2. Start services (no .env editing needed)
+docker compose up -d
+docker compose -f docker-compose-monitoring.yml up -d
+
+# 3. Wait for services to start (~30 seconds)
+docker compose ps
+
+# 4. Access web UI
+# http://<your-container-ip>:3001
+```
+
+### First-Time Configuration
+
+**Important**: Default IPs in database are placeholders. Configure actual network via Settings GUI:
+
+1. **Open Settings** → http://<your-container-ip>:3001/settings
+
+2. **Configure BACnet**:
+   - BACnet IP: Enter your container's IP on BACnet network (auto-detected, verify it's correct)
+   - BACnet Port: 47808 (standard, rarely needs changing)
+   - BACnet Device ID: 3001234 (change if conflicts with existing devices)
+
+3. **Configure MQTT**:
+   - MQTT Broker: Enter your MQTT broker IP (e.g., 10.0.60.3, 192.168.1.100)
+   - MQTT Port: 1883 (standard)
+
+4. **Click "Save Settings"**
+
+5. **Restart Worker**:
+   ```bash
+   docker compose restart bacnet-worker
+   ```
+
+6. **Verify Dashboard**:
+   - Navigate to http://<your-container-ip>:3001
+   - MQTT status should show 🟢 Connected
+   - System status should show "Operational"
+
+7. **Run Discovery**:
+   - Navigate to Discovery page
+   - Click "Start Discovery"
+   - BACnet devices will appear in table
+
+### Troubleshooting Fresh Deployments
+
+**Discovery finds 0 devices**:
+- Verify LXC features enabled: `cat /etc/pve/lxc/<CTID>.conf | grep features`
+- Check BACnet IP is correct in Settings (must be on same network as devices)
+- Verify firewall allows UDP port 47808
+
+**MQTT shows Disconnected 🔴**:
+- Verify MQTT broker IP is correct in Settings
+- Test broker connectivity: `ping <broker-ip>` (from inside container)
+- Check broker allows connections (firewall, authentication)
+
+**Worker fails to start**:
+- Check logs: `docker compose logs bacnet-worker`
+- Verify database is healthy: `docker compose ps postgres`
+
+---
+
 ## Architecture Overview
 
 ### System Components

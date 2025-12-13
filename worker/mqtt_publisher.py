@@ -211,7 +211,14 @@ class MqttPublisher:
                 self.mqtt_port = result['port']
                 self.mqtt_client_id = result['clientId'] or self.mqtt_client_id
 
-                logger.info(f"📋 MQTT Broker from database: {self.mqtt_broker}:{self.mqtt_port}")
+                logger.info(f"📋 MQTT Configuration:")
+                logger.info(f"   - Broker: {self.mqtt_broker}:{self.mqtt_port}")
+                logger.info(f"   - Client ID: {self.mqtt_client_id}")
+
+                # Warn if using default placeholder IP
+                if self.mqtt_broker in ['10.0.60.3', '10.0.60.2', '192.168.1.35']:
+                    logger.warning(f"   ⚠️  Using default placeholder IP - configure actual broker via Settings GUI")
+                    logger.info(f"   💡 http://your-ip:3001/settings")
             else:
                 logger.warning("⚠️  No MQTT config found in database, using environment defaults")
 
@@ -259,18 +266,23 @@ class MqttPublisher:
                 # Use database IP if provided and valid
                 if db_ip and db_ip.strip():
                     self.bacnet_ip = db_ip
+                    logger.info(f"📋 BACnet IP from database: {self.bacnet_ip}")
                 else:
                     # Auto-detect if not configured
                     detected_ip = self._auto_detect_local_ip()
                     if detected_ip:
                         self.bacnet_ip = detected_ip
-                        logger.info(f"🔍 Auto-detected BACnet IP: {self.bacnet_ip}")
+                        logger.info(f"🔍 BACnet IP auto-detected: {self.bacnet_ip}")
+                        logger.info(f"   💡 If incorrect, configure via Settings GUI at http://your-ip:3001/settings")
+                    elif self.bacnet_ip:
+                        logger.warning(f"⚠️  Using BACnet IP from environment: {self.bacnet_ip}")
+                        logger.info(f"   💡 To change, configure via Settings GUI")
                     # else: keep environment default
 
                 self.bacnet_port = db_port if db_port else self.bacnet_port
                 self.bacnet_device_id = db_device_id if db_device_id else self.bacnet_device_id
 
-                logger.info(f"📋 BACnet Config from database:")
+                logger.info(f"📋 BACnet Configuration:")
                 logger.info(f"   - Interface: {self.bacnet_ip}:{self.bacnet_port}")
                 logger.info(f"   - Device ID: {self.bacnet_device_id}")
             else:

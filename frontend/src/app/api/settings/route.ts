@@ -23,7 +23,7 @@ export async function GET() {
     if (!mqttConfig) {
       mqttConfig = await prisma.mqttConfig.create({
         data: {
-          broker: "10.0.60.2",
+          broker: "10.0.60.3",
           port: 1883,
           clientId: "bacpipes_worker",
         },
