@@ -72,13 +72,11 @@ export async function GET() {
       .map(([interval, count]) => ({ interval: Number(interval), count }))
       .sort((a, b) => a.interval - b.interval);
 
-    // Get recent point values (top 10 most recently updated)
+    // Get all publishing points with their latest values
     const recentPoints = await prisma.point.findMany({
       where: {
         mqttPublish: true,
-        lastPollTime: {
-          not: null,
-        },
+        enabled: true,
       },
       select: {
         id: true,
@@ -98,7 +96,6 @@ export async function GET() {
       orderBy: {
         lastPollTime: 'desc',
       },
-      take: 10,
     });
 
     // Calculate time since last update

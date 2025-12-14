@@ -78,7 +78,6 @@ build/
 # ============================================
 # Docker volumes (data persistence)
 postgres_data/
-timescaledb_data/
 mqtt_data/
 mqtt_logs/
 

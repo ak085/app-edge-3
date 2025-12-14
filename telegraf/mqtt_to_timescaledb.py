@@ -242,11 +242,21 @@ def main():
     import os
     logger.info(f"🚀 Starting MQTT to TimescaleDB bridge... (PID: {os.getpid()})")
 
-    # Connect to config database and load MQTT configuration
-    if connect_config_db():
-        load_mqtt_config()
+    # Check if CONFIG_DB_HOST is set (for standalone vs. integrated deployment)
+    config_db_host = os.getenv('CONFIG_DB_HOST', '')
+    if config_db_host:
+        # Integrated deployment: try to load MQTT config from BacPipes database
+        logger.info(f"📦 Integrated mode: attempting to load MQTT config from {config_db_host}")
+        if connect_config_db():
+            load_mqtt_config()
+        else:
+            logger.warning("⚠️  Could not load MQTT config from database, using environment variables")
     else:
-        logger.warning("⚠️  Could not load MQTT config from database, using defaults")
+        # Standalone deployment: use environment variables only
+        logger.info("📦 Standalone mode: using MQTT configuration from environment variables")
+        logger.info(f"   MQTT_BROKER: {mqtt_config['broker']}")
+        logger.info(f"   MQTT_PORT: {mqtt_config['port']}")
+        logger.info(f"   MQTT_CLIENT_ID: {mqtt_config['client_id']}")
 
     # Connect to TimescaleDB
     if not connect_db():

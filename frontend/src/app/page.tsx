@@ -119,10 +119,12 @@ export default function DashboardPage() {
 
     fetchData(false, abortController.signal)
 
-    if (autoRefresh) {
+    if (autoRefresh && data) {
+      // Use minimum poll interval from settings (default to 30s if not available)
+      const refreshInterval = (data.configuration?.system?.pollIntervals?.min || 30) * 1000
       const interval = setInterval(() => {
         fetchData(false, abortController.signal)
-      }, 10000)
+      }, refreshInterval)
       return () => {
         clearInterval(interval)
         abortController.abort()
@@ -130,7 +132,7 @@ export default function DashboardPage() {
     }
 
     return () => abortController.abort()
-  }, [autoRefresh])
+  }, [autoRefresh, data?.configuration?.system?.pollIntervals?.min])
 
   if (loading) {
     return (
@@ -219,7 +221,7 @@ export default function DashboardPage() {
                   onChange={(e) => setAutoRefresh(e.target.checked)}
                   className="rounded"
                 />
-                Auto-refresh (10s)
+                Auto-refresh ({data?.configuration?.system?.pollIntervals?.min || 30}s)
               </label>
               <button
                 onClick={handleManualRefresh}
@@ -426,7 +428,7 @@ export default function DashboardPage() {
         <div className="card bg-card border border-border p-5 rounded-lg mb-6">
           <div className="flex items-center gap-2 mb-4">
             <Activity className="w-5 h-5 text-cyan-500" />
-            <h3 className="font-semibold">Recent Point Values (Top 10)</h3>
+            <h3 className="font-semibold">Recent Point Values</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -481,7 +483,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Navigation Links */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <Link href="/discovery" className="card bg-card border border-border hover:border-blue-400 hover:shadow-md p-4 rounded-lg transition-all">
             <div className="flex items-center gap-2 mb-1">
               <Search className="w-5 h-5 text-blue-500" />
@@ -495,13 +497,6 @@ export default function DashboardPage() {
               <h4 className="font-semibold">Points</h4>
             </div>
             <p className="text-xs text-muted-foreground">Configure data points</p>
-          </Link>
-          <Link href="/monitoring" className="card bg-card border border-border hover:border-purple-400 hover:shadow-md p-4 rounded-lg transition-all">
-            <div className="flex items-center gap-2 mb-1">
-              <Activity className="w-5 h-5 text-purple-500" />
-              <h4 className="font-semibold">Monitoring</h4>
-            </div>
-            <p className="text-xs text-muted-foreground">Live data stream</p>
           </Link>
           <Link href="/settings" className="card bg-card border border-border hover:border-amber-400 hover:shadow-md p-4 rounded-lg transition-all">
             <div className="flex items-center gap-2 mb-1">

@@ -78,13 +78,6 @@ class MqttPublisher:
         self.bacnet_port = int(os.getenv('BACNET_PORT', '47808'))
         self.bacnet_device_id = int(os.getenv('BACNET_DEVICE_ID', '3056496'))
 
-        # TimescaleDB configuration (for direct historical writes)
-        self.timescaledb_host = os.getenv('TIMESCALEDB_HOST', 'timescaledb')
-        self.timescaledb_port = int(os.getenv('TIMESCALEDB_PORT', '5432'))
-        self.timescaledb_db = os.getenv('TIMESCALEDB_DB', 'timescaledb')
-        self.timescaledb_user = os.getenv('TIMESCALEDB_USER', 'anatoli')
-        self.timescaledb_password = os.getenv('TIMESCALEDB_PASSWORD', '')
-
         self.poll_interval = int(os.getenv('POLL_INTERVAL', '60'))
         self.timezone = pytz.timezone(os.getenv('TZ', 'Asia/Kuala_Lumpur'))
 
@@ -95,8 +88,6 @@ class MqttPublisher:
 
         # State
         self.db_conn = None  # PostgreSQL (configuration)
-        self.timescaledb_conn = None  # TimescaleDB (historical data)
-        self.timescaledb_connected = False  # Track TimescaleDB availability
         self.mqtt_client = None
         self.mqtt_connected = False
         self.poll_cycle = 0
@@ -106,7 +97,6 @@ class MqttPublisher:
 
         logger.info("=== BacPipes MQTT Publisher Configuration ===")
         logger.info(f"Database: {self.db_host}:{self.db_port}/{self.db_name}")
-        logger.info(f"TimescaleDB: {self.timescaledb_host}:{self.timescaledb_port}/{self.timescaledb_db}")
         logger.info(f"MQTT Broker: {self.mqtt_broker}:{self.mqtt_port}")
         logger.info(f"BACnet Interface: {self.bacnet_ip}:{self.bacnet_port}")
         logger.info(f"BACnet Device ID: {self.bacnet_device_id}")
@@ -153,28 +143,6 @@ class MqttPublisher:
         except Exception as e:
             logger.error(f"❌ Failed to connect to database: {e}")
             return False
-
-    def connect_timescaledb(self):
-        """Connect to TimescaleDB for historical data storage (graceful degradation)"""
-        try:
-            self.timescaledb_conn = psycopg2.connect(
-                host=self.timescaledb_host,
-                port=self.timescaledb_port,
-                database=self.timescaledb_db,
-                user=self.timescaledb_user,
-                password=self.timescaledb_password,
-                connect_timeout=10
-            )
-            self.timescaledb_conn.autocommit = True  # Auto-commit for time-series inserts
-            self.timescaledb_connected = True
-            logger.info("✅ Connected to TimescaleDB for historical data storage")
-            return True
-        except Exception as e:
-            logger.warning(f"⚠️  Failed to connect to TimescaleDB: {e}")
-            logger.warning(f"⚠️  Worker will continue without local historical storage")
-            logger.warning(f"⚠️  Historical data will only be saved via MQTT → Telegraf pipeline")
-            self.timescaledb_connected = False
-            return True  # Return True for graceful degradation
 
     def load_system_settings(self):
         """Load system settings from database (timezone, etc)"""
@@ -1209,65 +1177,6 @@ class MqttPublisher:
             logger.error(f"Failed to publish individual topic {point['mqttTopic']}: {e}")
             return False
 
-    def write_to_timescaledb(self, point: Dict, value: Any, timestamp: str):
-        """Write sensor reading directly to TimescaleDB (bypassing MQTT)"""
-        if not self.timescaledb_connected or not self.timescaledb_conn:
-            return False
-
-        try:
-            if value is None:
-                return False
-
-            # Prepare data matching sensor_readings schema
-            data = {
-                'time': timestamp,
-                'site_id': point.get('siteId'),
-                'equipment_type': point.get('equipmentType'),
-                'equipment_id': point.get('equipmentId'),
-                'device_id': point['deviceId'],
-                'device_name': point.get('deviceName'),
-                'device_ip': point['ipAddress'],
-                'object_type': point['objectType'],
-                'object_instance': point['objectInstance'],
-                'point_id': point['id'],
-                'point_name': point['pointName'],
-                'haystack_name': point.get('haystackPointName'),
-                'dis': point.get('dis'),
-                'value': float(value) if isinstance(value, (int, float)) else value,
-                'units': point.get('units'),
-                'quality': 'good',
-                'poll_duration': None,
-                'poll_cycle': self.poll_cycle
-            }
-
-            cursor = self.timescaledb_conn.cursor()
-            sql = """
-            INSERT INTO sensor_readings (
-                time, site_id, equipment_type, equipment_id,
-                device_id, device_name, device_ip,
-                object_type, object_instance,
-                point_id, point_name, haystack_name, dis,
-                value, units, quality,
-                poll_duration, poll_cycle
-            ) VALUES (
-                %(time)s, %(site_id)s, %(equipment_type)s, %(equipment_id)s,
-                %(device_id)s, %(device_name)s, %(device_ip)s,
-                %(object_type)s, %(object_instance)s,
-                %(point_id)s, %(point_name)s, %(haystack_name)s, %(dis)s,
-                %(value)s, %(units)s, %(quality)s,
-                %(poll_duration)s, %(poll_cycle)s
-            )
-            """
-            cursor.execute(sql, data)
-            cursor.close()
-            return True
-
-        except Exception as e:
-            logger.warning(f"⚠️  TimescaleDB write failed for point {point['id']}: {e}")
-            self.timescaledb_connected = False  # Mark as disconnected
-            logger.warning(f"⚠️  TimescaleDB writes disabled (connection lost)")
-            return False
-
     async def poll_and_publish(self):
         """Main polling loop - checks each point's individual interval"""
         points = self.get_enabled_points()
@@ -1300,13 +1209,15 @@ class MqttPublisher:
             point_id = point['id']
             poll_interval = point['pollInterval']
 
-            # For new points, initialize to minute-aligned polling
+            # For new points, initialize to minute-aligned polling (start at second :00 of next minute)
             if point_id not in self.point_last_poll:
-                # Set last poll time so point will poll at next minute boundary
-                # Formula: last_poll = next_minute - poll_interval
+                # Calculate the aligned start time: next minute boundary minus poll interval
+                # This ensures the first poll happens exactly at second :00 of the next minute
+                # Example: if poll_interval=30s, point will poll at :00, :30, :00, :30, etc.
                 self.point_last_poll[point_id] = next_minute - poll_interval
-                logger.info(f"📅 Point {point['pointName']} (ID {point_id}) initialized for minute-aligned polling (next poll at {next_minute_time})")
-                # Note: We'll skip this point now and poll it at the minute boundary
+                first_poll_time = datetime.fromtimestamp(next_minute, self.timezone).strftime('%H:%M:%S')
+                logger.info(f"📅 Point {point['pointName']} (ID {point_id}) scheduled for minute-aligned polling (first poll at {first_poll_time})")
+                # Skip this point now - it will poll at the aligned time
                 skipped_reads += 1
                 continue
 
@@ -1316,6 +1227,15 @@ class MqttPublisher:
 
             if time_since_last_poll < poll_interval:
                 # Not time to poll this point yet
+                skipped_reads += 1
+                continue
+
+            # Ensure polling happens at aligned seconds (e.g., :00, :30 for 30s interval)
+            # Only poll if current second is aligned to the interval (within first 2 seconds)
+            current_second = int(current_time) % 60  # Second within the minute (0-59)
+            is_aligned = (current_second % poll_interval) < 2
+            if not is_aligned:
+                # Wait for the aligned second (e.g., :00, :30 for 30s interval)
                 skipped_reads += 1
                 continue
 
@@ -1333,10 +1253,12 @@ class MqttPublisher:
             if value is not None:
                 successful_reads += 1
 
-                # Update last poll time for this point
-                self.point_last_poll[point_id] = current_time
+                # Update last poll time - align to minute boundary to prevent drift
+                # This ensures subsequent polls stay aligned (e.g., :00, :30, :00, :30 for 30s interval)
+                aligned_time = math.floor(current_time / poll_interval) * poll_interval
+                self.point_last_poll[point_id] = aligned_time
 
-                # Write to THREE destinations (order matters for data consistency)
+                # Write to TWO destinations (order matters for data consistency)
 
                 # 1. PostgreSQL - Update last value (CRITICAL - must succeed)
                 try:
@@ -1350,10 +1272,8 @@ class MqttPublisher:
                 except Exception as e:
                     logger.warning(f"⚠️  Failed to update PostgreSQL for point {point['id']}: {e}")
 
-                # 2. TimescaleDB - Historical time-series data (OPTIONAL - graceful degradation)
-                self.write_to_timescaledb(point, value, timestamp)
-
-                # 3. MQTT - External subscribers (OPTIONAL - graceful degradation)
+                # 2. MQTT - External subscribers (OPTIONAL - graceful degradation)
+                # Note: Historical storage is handled by separate Telegraf → TimescaleDB pipeline
                 if self.publish_individual_topic(point, value, timestamp):
                     individual_publishes += 1
 
@@ -1437,9 +1357,6 @@ class MqttPublisher:
         self._config_hash = self._get_config_hash()
         self._last_config_check = time.time()
 
-        # Connect to TimescaleDB (optional - graceful degradation)
-        self.connect_timescaledb()
-
         # Initialize BACnet (after event loop is running)
         if not self.initialize_bacnet():
             logger.error("Cannot start without BACnet stack")
@@ -1505,10 +1422,6 @@ class MqttPublisher:
             self.mqtt_client.loop_stop()
             self.mqtt_client.disconnect()
             logger.info("Disconnected from MQTT broker")
-
-        if self.timescaledb_conn:
-            self.timescaledb_conn.close()
-            logger.info("Disconnected from TimescaleDB")
 
         if self.db_conn:
             self.db_conn.close()

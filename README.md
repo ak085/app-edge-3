@@ -13,7 +13,7 @@
 
 ```bash
 # Clone and deploy
-git clone http://10.0.10.2:30008/ak101/app-bacnet-local.git bacpipes
+git clone http://10.0.10.2:30008/ak101/app-edge2.git bacpipes
 cd bacpipes
 docker compose up -d
 
@@ -78,6 +78,7 @@ Perfect for integrating building automation systems with IoT platforms, time-ser
 | **TLS Support** | Secure MQTT with certificate verification |
 | **Write Commands** | Remote control with priority array support |
 | **Setup Wizard** | Zero-config first-run experience |
+| **Minute-Aligned Polling** | Data starts at second :00 for synchronization |
 | **Graceful Degradation** | Works even if MQTT broker unavailable |
 
 ---
@@ -102,6 +103,7 @@ Perfect for integrating building automation systems with IoT platforms, time-ser
 | Stop | `docker compose down` |
 | Logs | `docker compose logs -f bacnet-worker` |
 | Restart worker | `docker compose restart bacnet-worker` |
+| Rebuild | `docker compose build && docker compose up -d` |
 | Reset (delete data) | `docker compose down -v` |
 
 ---
@@ -138,7 +140,7 @@ All configuration is done via the web UI at `/settings`:
 
 ### Via Environment Variables (Optional)
 
-For advanced customization, copy `.env.example` to `.env`:
+For advanced customization, create a `.env` file:
 
 ```bash
 # Only needed for custom database credentials
@@ -178,7 +180,7 @@ bacnet/write/command
   "dis": "AHU-12 Supply Air Temp",
   "value": 23.5,
   "units": "degC",
-  "timestamp": "2025-12-14T10:30:00.000Z"
+  "timestamp": "2025-12-15T10:30:00.000Z"
 }
 ```
 
@@ -206,43 +208,42 @@ Common: Database not ready. Wait 30s and check again.
 
 ## Optional: Time-Series Storage
 
-For historical data storage, deploy the monitoring stack:
+For historical data storage, deploy the storage stack separately:
 
 ```bash
-docker compose -f docker-compose-monitoring.yml up -d
+docker compose -f docker-compose-storage.yml up -d
 ```
 
 This adds:
 - TimescaleDB (port 5435) - Time-series database
 - Telegraf - MQTT to TimescaleDB ingestion
 
-**Note:** A dedicated Storage App with monitoring UI is planned for future release.
+The storage stack can run on the same machine or a separate server.
 
 ---
 
 ## Development
 
-See `CLAUDE.md` for detailed development context and recent changes.
+See `CLAUDE.md` for detailed development context.
 
 **Project Structure:**
 ```
 bacpipes/
-├── docker-compose.yml          # Core services
+├── docker-compose.yml          # Core services (frontend, postgres, worker)
+├── docker-compose-storage.yml  # Optional storage (timescaledb, telegraf)
 ├── frontend/                   # Next.js web app
 │   ├── src/app/               # Pages and API routes
 │   └── prisma/                # Database schema
 ├── worker/                     # Python BACnet worker
 │   └── mqtt_publisher.py      # Main polling loop
-└── ARCHITECTURE_REFACTOR_PLAN.md  # Upcoming changes
+└── telegraf/                   # MQTT to TimescaleDB bridge
 ```
 
 ---
 
 ## Repository
 
-- **Gitea**: http://10.0.10.2:30008/ak101/app-bacnet-local.git
-- **Development**: `development` branch
-- **Production**: `main` branch
+- **Gitea**: http://10.0.10.2:30008/ak101/app-edge2.git
 
 ---
 

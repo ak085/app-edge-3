@@ -1,12 +1,14 @@
-# BacPipes - Complete Stack
-# BACnet polling, MQTT publishing, and time-series storage
+# BacPipes - Edge Gateway Stack
+# BACnet polling and MQTT publishing
 # - BACnet IP: Auto-detected or configured via Settings GUI
 # - MQTT Broker: Configured via Settings GUI (database-first architecture)
-# - TimescaleDB: Historical data storage and CSV/JSON export
 #
 # Deploy: docker compose up -d
 # NOTE: Uses bridge networking for LXC container compatibility
 # BACnet auto-discovery on local network requires host networking (see README)
+#
+# For historical data storage, deploy the storage stack separately:
+# docker compose -f docker-compose-storage.yml up -d
 
 services:
   postgres:
@@ -29,27 +31,6 @@ services:
       - bacpipes-network
     restart: unless-stopped
 
-  timescaledb:
-    image: timescale/timescaledb:latest-pg15
-    container_name: bacpipes-timescaledb
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-anatoli}
-      POSTGRES_DB: ${TIMESCALEDB_DB:-timescaledb}
-      POSTGRES_HOST_AUTH_METHOD: trust
-    ports:
-      - "5435:5432"
-    volumes:
-      - timescaledb_data:/var/lib/postgresql/data
-      - ./timescaledb/init:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anatoli}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - bacpipes-network
-    restart: unless-stopped
-
   frontend:
     build:
       context: ./frontend
@@ -58,19 +39,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      timescaledb:
-        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-anatoli}@postgres:5432/${POSTGRES_DB:-bacpipes}
       NODE_ENV: production
       TZ: ${TZ:-Asia/Kuala_Lumpur}
       PORT: 3001
-      # TimescaleDB connection (for CSV/JSON export)
-      TIMESCALEDB_HOST: timescaledb
-      TIMESCALEDB_PORT: 5432
-      TIMESCALEDB_DB: ${TIMESCALEDB_DB:-timescaledb}
-      TIMESCALEDB_USER: ${TIMESCALEDB_USER:-anatoli}
-      TIMESCALEDB_PASSWORD: ${TIMESCALEDB_PASSWORD:-}
     ports:
       - "3001:3001"
     volumes:
@@ -82,34 +55,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-    networks:
-      - bacpipes-network
-    restart: unless-stopped
-
-  telegraf:
-    build:
-      context: ./telegraf
-      dockerfile: Dockerfile
-    container_name: bacpipes-telegraf
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-    environment:
-      # MQTT configuration (connects to external broker)
-      MQTT_BROKER: ${MQTT_BROKER:-10.0.60.3}
-      MQTT_PORT: ${MQTT_PORT:-1883}
-      MQTT_CLIENT_ID_TELEGRAF: bacpipes_telegraf_edge
-      # TimescaleDB connection
-      TIMESCALEDB_HOST: timescaledb
-      TIMESCALEDB_PORT: 5432
-      TIMESCALEDB_DB: ${TIMESCALEDB_DB:-timescaledb}
-      TIMESCALEDB_USER: ${POSTGRES_USER:-anatoli}
-      # Config database connection (for reading MQTT settings)
-      CONFIG_DB_HOST: postgres
-      CONFIG_DB_PORT: 5432
-      CONFIG_DB_NAME: ${POSTGRES_DB:-bacpipes}
-      CONFIG_DB_USER: ${POSTGRES_USER:-anatoli}
-      TZ: ${TZ:-Asia/Kuala_Lumpur}
     networks:
       - bacpipes-network
     restart: unless-stopped
@@ -132,14 +77,6 @@ services:
       DB_NAME: ${POSTGRES_DB:-bacpipes}
       DB_USER: ${POSTGRES_USER:-anatoli}
       DB_PASSWORD: ""
-
-      # TimescaleDB connection (optional - for direct historical writes)
-      TIMESCALEDB_HOST: localhost
-      TIMESCALEDB_PORT: 5435
-      TIMESCALEDB_DB: ${TIMESCALEDB_DB:-timescaledb}
-      TIMESCALEDB_USER: ${TIMESCALEDB_USER:-anatoli}
-      TIMESCALEDB_PASSWORD: ${TIMESCALEDB_PASSWORD:-}
-
       # BACnet configuration (OPTIONAL - loaded from database SystemSettings)
       # Worker auto-detects IP if not configured. Set via Settings GUI instead.
       BACNET_IP: ${BACNET_IP:-}              # Auto-detected if empty
@@ -165,8 +102,6 @@ networks:
 
 volumes:
   postgres_data:
-    driver: local
-  timescaledb_data:
     driver: local
   mqtt_certs:
     driver: local
