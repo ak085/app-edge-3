@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
     // Write file to disk
     const certConfig = CERT_TYPES[certType];
     const filePath = path.join(CERTS_DIR, certConfig.filename);
-    await writeFile(filePath, content, { mode: 0o600 }); // Restrictive permissions
+    await writeFile(filePath, content, { mode: 0o644 }); // Readable by worker container
 
     // Update database with file path
     const mqttConfig = await prisma.mqttConfig.findFirst();

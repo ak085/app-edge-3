@@ -1,6 +1,7 @@
 // SSE endpoint for real-time MQTT data streaming
 import { NextRequest } from 'next/server';
 import mqtt from 'mqtt';
+import fs from 'fs';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -54,8 +55,9 @@ export async function GET(request: NextRequest) {
       // Generate unique client ID
       clientId = `bacpipes_monitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // Connect to MQTT broker (using Docker service name)
-      const brokerUrl = `mqtt://${broker}:${port}`;
+      // Connect to MQTT broker - use mqtts:// if TLS is enabled
+      const protocol = mqttConfig.tlsEnabled ? 'mqtts' : 'mqtt';
+      const brokerUrl = `${protocol}://${broker}:${port}`;
 
       try {
         // Build connection options
@@ -71,6 +73,23 @@ export async function GET(request: NextRequest) {
           connectOptions.username = mqttConfig.username;
           connectOptions.password = mqttConfig.password || undefined;
           console.log(`[SSE] Using MQTT authentication (user: ${mqttConfig.username})`);
+        }
+
+        // Add TLS options if enabled
+        if (mqttConfig.tlsEnabled) {
+          connectOptions.rejectUnauthorized = !mqttConfig.tlsInsecure;
+
+          // Load CA certificate for verification (if not in insecure mode)
+          if (!mqttConfig.tlsInsecure && mqttConfig.caCertPath) {
+            try {
+              connectOptions.ca = fs.readFileSync(mqttConfig.caCertPath);
+              console.log(`[SSE] TLS enabled with CA cert: ${mqttConfig.caCertPath}`);
+            } catch (err) {
+              console.error(`[SSE] Failed to load CA certificate: ${err}`);
+            }
+          } else {
+            console.log(`[SSE] TLS enabled (insecure mode: ${mqttConfig.tlsInsecure})`);
+          }
         }
 
         mqttClient = mqtt.connect(brokerUrl, connectOptions);

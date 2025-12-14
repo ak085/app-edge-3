@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import mqtt from 'mqtt';
+import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -110,11 +111,38 @@ export async function POST(request: NextRequest) {
     };
 
     // Connect to MQTT broker and publish write command
-    const brokerUrl = `mqtt://${broker}:${port}`;
-    const client = mqtt.connect(brokerUrl, {
+    const protocol = mqttConfig.tlsEnabled ? 'mqtts' : 'mqtt';
+    const brokerUrl = `${protocol}://${broker}:${port}`;
+    const connectOptions: mqtt.IClientOptions = {
       clientId: `bacpipes_write_${Date.now()}`,
       clean: true,
-    });
+    };
+
+    // Add authentication if configured
+    if (mqttConfig.username) {
+      connectOptions.username = mqttConfig.username;
+      connectOptions.password = mqttConfig.password || undefined;
+      console.log(`[Write API] Using MQTT authentication (user: ${mqttConfig.username})`);
+    }
+
+    // Add TLS options if enabled
+    if (mqttConfig.tlsEnabled) {
+      connectOptions.rejectUnauthorized = !mqttConfig.tlsInsecure;
+
+      // Load CA certificate for verification (if not in insecure mode)
+      if (!mqttConfig.tlsInsecure && mqttConfig.caCertPath) {
+        try {
+          connectOptions.ca = fs.readFileSync(mqttConfig.caCertPath);
+          console.log(`[Write API] TLS enabled with CA cert: ${mqttConfig.caCertPath}`);
+        } catch (err) {
+          console.error(`[Write API] Failed to load CA certificate: ${err}`);
+        }
+      } else {
+        console.log(`[Write API] TLS enabled (insecure mode: ${mqttConfig.tlsInsecure})`);
+      }
+    }
+
+    const client = mqtt.connect(brokerUrl, connectOptions);
 
     // Wait for connection and publish
     const publishPromise = new Promise<void>((resolve, reject) => {

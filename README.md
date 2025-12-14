@@ -1,6 +1,6 @@
-# BacPipes - BACnet to MQTT Edge Data Collection
+# BacPipes - BACnet to MQTT Edge Gateway
 
-**Production-ready BACnet-to-MQTT bridge with web-based configuration and remote monitoring**
+**Production-ready BACnet-to-MQTT bridge with web-based configuration**
 
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](docker-compose.yml)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
@@ -9,216 +9,45 @@
 
 ---
 
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [Architecture Overview](#architecture-overview)
-- [Detailed Installation Guide](#detailed-installation-guide)
-- [Configuration](#configuration)
-- [Common Operations](#common-operations)
-- [Data Management](#data-management)
-- [Monitoring & Dashboards](#monitoring--dashboards)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
-
----
-
 ## Quick Start
 
-**For experienced users who know Docker Compose**
-
-### Prerequisites
-- ✅ Docker & Docker Compose installed
-- ✅ 4GB RAM minimum (8GB recommended)
-- ✅ Linux host (Ubuntu/Debian recommended)
-- ✅ Network access to BACnet devices (UDP port 47808)
-- ✅ MQTT broker accessible (or configure after deployment)
-
-### Deploy in 60 Seconds
-
 ```bash
-# 1. Clone repository
-git clone http://10.0.10.2:30008/ak101/app-bacnet-local.git
-cd BacPipes
-
-# 2. Configure environment (OPTIONAL - auto-detects IP if not set)
-cp .env.example .env
-# nano .env  # Only needed for custom database settings
-
-# 3. Deploy
+# Clone and deploy
+git clone http://10.0.10.2:30008/ak101/app-bacnet-local.git bacpipes
+cd bacpipes
 docker compose up -d
-docker compose -f docker-compose-monitoring.yml up -d
 
-# 4. Access UI and configure via Settings GUI
-# Discovery & Config: http://<your-ip>:3001
-# Settings: http://<your-ip>:3001/settings
+# Access UI
+# http://<your-ip>:3001
 ```
 
-### Common Commands
-
-| Operation | Command |
-|-----------|---------|
-| **Start all services** | `docker compose up -d && docker compose -f docker-compose-monitoring.yml up -d` |
-| **Stop all services** | `docker compose down && docker compose -f docker-compose-monitoring.yml down` |
-| **Restart worker** | `docker compose restart bacnet-worker` |
-| **View logs** | `docker compose logs -f bacnet-worker` |
-| **Clean time-series data** | See [Data Management](#data-management) |
-| **Complete reset** | `docker compose down -v && docker compose -f docker-compose-monitoring.yml down -v` |
-
-### First-Time Workflow
-
-**Automatic Setup Wizard** (fresh deployments):
-
-1. **Access Dashboard** → http://localhost:3001
-   - On first run, setup wizard appears automatically
-   - No manual configuration needed!
-
-2. **Complete Setup Wizard**:
-   - **Step 1**: Select your BACnet network interface
-     - System auto-detects available IPs
-     - Choose your LXC host IP (avoid docker bridge IPs like 172.x.x.x)
-   - **Step 2**: Enter MQTT broker IP address
-     - Example: 10.0.60.3 or 192.168.1.100
-     - Leave empty if you don't have one yet (configure later in Settings)
-   - Click "Complete Setup"
-   - Worker starts automatically within 10 seconds!
-
-3. **Discover Devices** → http://localhost:3001/discovery
-   - Click "Start Discovery"
-   - Save discovered devices
-
-4. **Tag Points** → http://localhost:3001/points
-   - Select points → Add Haystack tags
-   - Enable "Publish to MQTT"
-   - Set poll intervals
-
-5. **Monitor Data** → http://localhost:3001/monitoring
-   - Real-time MQTT stream
-
-**Note:** Setup wizard only appears on fresh deployments. After initial setup, use Settings page to modify configuration.
+**Setup wizard appears automatically on first run** - configures BACnet IP and MQTT broker.
 
 ---
 
-## Fresh LXC Deployment (Proxmox/VE)
+## What is BacPipes?
 
-BacPipes works seamlessly in LXC containers with proper features enabled.
+BacPipes is an edge gateway that:
+1. **Discovers** BACnet devices on your network
+2. **Tags** points using Haystack semantic naming
+3. **Publishes** selected points to any MQTT broker
+4. **Supports** BACnet write commands for remote control
 
-### LXC Prerequisites
-
-**On Proxmox host**, enable container features for BACnet host networking:
-
-```bash
-# Edit container config
-nano /etc/pve/lxc/<CTID>.conf
-
-# Add this line:
-features: nesting=1,keyctl=1
-
-# Reboot container
-pct reboot <CTID>
-```
-
-**Why needed**: BACnet discovery uses UDP broadcasts (port 47808) requiring host networking.
-
-### Deployment Steps
-
-```bash
-# 1. Clone repository (inside LXC container)
-git clone http://10.0.10.2:30008/ak101/app-bacnet-local.git bacnet
-cd bacnet
-
-# 2. Start services (no .env editing needed)
-docker compose up -d
-docker compose -f docker-compose-monitoring.yml up -d
-
-# 3. Wait for services to start (~30 seconds)
-docker compose ps
-
-# 4. Access web UI
-# http://<your-container-ip>:3001
-```
-
-### First-Time Setup (Automatic)
-
-**Setup Wizard** - Guided configuration on first deployment:
-
-1. **Access Dashboard** → http://<your-container-ip>:3001
-   - Setup wizard appears automatically on fresh deployment
-   - No manual `.env` editing required!
-
-2. **Setup Wizard - Step 1: BACnet Network**
-   - System auto-detects available network interfaces
-   - Select your LXC container IP (e.g., 192.168.1.51)
-   - **Avoid** docker bridge IPs (172.17.x.x - 172.31.x.x)
-   - Click "Next: MQTT Configuration"
-
-3. **Setup Wizard - Step 2: MQTT Broker**
-   - Enter your MQTT broker IP address (e.g., 10.0.60.3)
-   - Leave empty if you don't have a broker yet (configure later)
-   - Click "Complete Setup"
-
-4. **Automatic Worker Startup**
-   - Configuration saves to database
-   - Worker detects configuration within 10 seconds
-   - **No manual restart needed!**
-
-5. **Verify Dashboard**:
-   - Dashboard refreshes automatically
-   - MQTT status should show 🟢 Connected (if broker configured)
-   - System status should show "Operational"
-
-6. **Run Discovery**:
-   - Navigate to Discovery page
-   - Click "Start Discovery"
-   - BACnet devices will appear in table
-
-**Total Time**: 2-3 minutes from clone to discovery
-
-### Troubleshooting Fresh Deployments
-
-**Setup wizard doesn't appear**:
-- Check logs: `docker compose logs frontend`
-- Verify database seeded properly: `docker compose logs frontend | grep "Seeding"`
-- If needed, restart frontend: `docker compose restart frontend`
-
-**Setup wizard shows "No interfaces detected"**:
-- Verify LXC features enabled: `cat /etc/pve/lxc/<CTID>.conf | grep features`
-- Required: `features: nesting=1,keyctl=1`
-- Restart container: `pct reboot <CTID>`
-
-**Worker stuck on "Waiting for configuration"**:
-- Check worker logs: `docker compose logs bacnet-worker`
-- Should show: "⏸️ BACnet IP not configured - waiting for first-time setup"
-- Complete setup wizard in browser at http://<your-ip>:3001
-- Worker will detect configuration within 10 seconds
-
-**Discovery finds 0 devices**:
-- Verify BACnet IP selected correctly in setup wizard (not docker bridge IP)
-- Check BACnet IP is on same network as devices
-- Verify firewall allows UDP port 47808
-- Test from container: `docker exec -it bacpipes-worker ping <device-ip>`
-
-**MQTT shows Disconnected 🔴**:
-- Verify MQTT broker IP entered correctly in setup wizard
-- Test broker connectivity: `docker exec -it bacpipes-worker ping <broker-ip>`
-- Check broker allows connections (firewall, authentication)
-- Can configure MQTT later in Settings if skipped during setup
+Perfect for integrating building automation systems with IoT platforms, time-series databases, or cloud services.
 
 ---
 
-## Architecture Overview
-
-### System Components
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
-│ BacPipes Application (Docker Compose)       │
+│ BacPipes (Docker Compose)                   │
 ├─────────────────────────────────────────────┤
 │  Frontend (Next.js) - Port 3001             │
-│  ├─ Discovery                               │
+│  ├─ Dashboard (system status)               │
+│  ├─ Discovery (BACnet scan)                 │
 │  ├─ Points (Haystack tagging)               │
-│  ├─ Monitoring                              │
-│  └─ Settings                                │
+│  └─ Settings (BACnet/MQTT config)           │
 │                                             │
 │  PostgreSQL - Port 5434                     │
 │  └─ Devices, Points, Config                 │
@@ -227,236 +56,57 @@ docker compose ps
 │  ├─ Polls BACnet devices                    │
 │  ├─ Publishes to MQTT                       │
 │  └─ Handles write commands                  │
-│                                             │
-│  TimescaleDB - Port 5435                    │
-│  └─ Time-series storage                     │
-│                                             │
-│  Telegraf (MQTT → TimescaleDB)              │
-│  └─ Data ingestion bridge                   │
 └─────────────────────────────────────────────┘
                   ↓ MQTT publish
 ┌─────────────────────────────────────────────┐
-│ External MQTT Broker (10.0.60.3:1883)       │
-│ - Configurable via Settings GUI             │
-│ - Can be any broker on any network          │
-│ - Supports MQTT bridging to remote sites    │
+│ External MQTT Broker                        │
+│ - Any broker (Mosquitto, EMQX, HiveMQ)      │
+│ - Supports TLS/SSL encryption               │
+│ - Supports username/password auth           │
 └─────────────────────────────────────────────┘
 ```
 
-### Key Features
+---
 
-- 🔍 **BACnet Discovery** - Automatic network scanning and device detection
-- 🏷️ **Haystack Tagging** - Industry-standard semantic naming (8-field structure)
-- 📡 **MQTT Publishing** - Real-time data streaming with configurable intervals
-- ⚙️ **Flexible MQTT** - Works with any MQTT broker on any network
-- 📊 **Real-time Monitoring** - Live point values on main dashboard
-- ✏️ **BACnet Write** - Remote control with priority array support
-- ⏱️ **TimescaleDB** - Time-series data storage with automatic compression
-- 🐳 **Docker Compose** - Production-optimized deployment
-- 🔄 **Graceful Degradation** - App works even if MQTT broker unavailable
+## Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **BACnet Discovery** | Auto-scan network for devices and points |
+| **Haystack Tagging** | 8-field semantic naming for ML/analytics |
+| **MQTT Publishing** | Real-time data streaming to any broker |
+| **TLS Support** | Secure MQTT with certificate verification |
+| **Write Commands** | Remote control with priority array support |
+| **Setup Wizard** | Zero-config first-run experience |
+| **Graceful Degradation** | Works even if MQTT broker unavailable |
 
 ---
 
-## Port Configuration
+## First-Time Setup
 
-BacPipes uses **bridge networking** for LXC container compatibility. Services communicate using Docker service names within the bridge network, while exposing specific ports to the host.
-
-**Port Allocation (Host → Container):**
-- **3001 → 3001**: Frontend (Next.js web interface)
-- **5434 → 5432**: PostgreSQL (configuration database)
-- **5435 → 5432**: TimescaleDB (time-series data storage)
-- **47808**: BACnet worker (internal only)
-
-**Connection Strings:**
-- **Inside containers**: Use service names (e.g., `postgres:5432`, `timescaledb:5432`)
-- **From host machine**: Use `localhost` with external ports (e.g., `localhost:5434`, `localhost:5435`)
-
-**LXC Container Compatibility:**
-This configuration works in unprivileged LXC containers (e.g., Proxmox) without requiring `nesting=1` or privileged mode. For host networking (BACnet auto-discovery on local network), you would need to enable LXC features:
-```bash
-# On Proxmox host (if you want host networking)
-pct set <container-id> -features nesting=1,keyctl=1
-pct reboot <container-id>
-```
-
-If you encounter connection errors during deployment, verify that your `.env` files use service names as shown in `.env.example`.
+1. **Access Dashboard**: http://your-ip:3001
+2. **Complete Setup Wizard**:
+   - Select BACnet network interface (auto-detected)
+   - Enter MQTT broker IP (optional - can configure later)
+3. **Run Discovery**: Click "Start Discovery" to find BACnet devices
+4. **Tag Points**: Add Haystack tags, enable MQTT publishing
+5. **Verify**: Check Dashboard for MQTT connection status
 
 ---
 
-## Detailed Installation Guide
+## Common Commands
 
-### System Requirements
-
-**Hardware:**
-- CPU: 2 cores minimum (4 cores recommended)
-- RAM: 4GB minimum (8GB recommended for monitoring stack)
-- Disk: 20GB minimum (depends on data retention)
-
-**Software:**
-- Operating System: Linux (Ubuntu 22.04+ or Debian 11+ recommended)
-- Docker Engine: 24.0+
-- Docker Compose: 2.20+
-
-**Network:**
-- BACnet/IP network access (UDP port 47808)
-- MQTT broker (local or remote)
-- Outbound internet access (for Docker image pulls)
-
-### Step 1: Install Docker
-
-```bash
-# Ubuntu/Debian
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker $USER
-newgrp docker
-
-# Verify installation
-docker --version
-docker compose version
-```
-
-### Step 2: Clone Repository
-
-```bash
-# Clone from Gitea
-git clone http://10.0.10.2:30008/ak101/app-bacnet-local.git BacPipes
-cd BacPipes
-
-# Check branch
-git branch -a
-git checkout development  # or main for production
-```
-
-### Step 3: Configure Environment (Optional)
-
-```bash
-# Copy template (OPTIONAL - only needed for custom database settings)
-cp .env.example .env
-
-# Edit configuration (NOT REQUIRED - configure via Settings GUI instead)
-# nano .env
-```
-
-**IMPORTANT: Configuration is now database-driven!**
-
-All BACnet and MQTT settings are configured via the **Settings GUI** at http://localhost:3001/settings.
-The system **auto-detects your BACnet IP** if not configured.
-
-**Optional `.env` settings (only for advanced customization):**
-
-```bash
-# Database (only change if using custom setup)
-POSTGRES_USER=anatoli
-POSTGRES_DB=bacpipes
-
-# BACnet Configuration (OPTIONAL - auto-detected or set via Settings GUI)
-# BACNET_IP=192.168.1.35
-# BACNET_PORT=47808
-# BACNET_DEVICE_ID=3001234
-
-# MQTT Broker (OPTIONAL - configured via Settings GUI)
-# MQTT_BROKER=10.0.60.3
-# MQTT_PORT=1883
-
-# System
-TZ=Asia/Kuala_Lumpur           # YOUR timezone
-NODE_ENV=production            # production or development
-```
-
-**Configuration Priority:**
-1. **Database Settings** (via Settings GUI) - Primary source
-2. **Auto-detection** (for BACnet IP)
-3. Environment variables (.env) - Fallback only
-
-### Step 4: Deploy Services
-
-```bash
-# Start core services (discovery, polling, MQTT publishing)
-docker compose up -d
-
-# Start monitoring stack (TimescaleDB, dashboard)
-docker compose -f docker-compose-monitoring.yml up -d
-
-# Check status
-docker compose ps
-docker compose -f docker-compose-monitoring.yml ps
-
-# View logs
-docker compose logs -f
-```
-
-### Step 5: Initial Configuration
-
-**1. Access Web UI:**
-```bash
-# Discovery & Configuration
-http://192.168.1.35:3001
-```
-
-**2. Configure System Settings:**
-- Navigate to **Settings** page (http://your-ip:3001/settings)
-- **BACnet IP**: Auto-detected (verify it's correct, or update manually)
-- **MQTT Broker IP**: Enter your MQTT broker's IP address
-- **Timezone**: Set your local timezone
-- Click **Save Settings**
-- **Restart worker to apply:** `docker compose restart bacnet-worker`
-
-**Note:** All configuration is now stored in the database. No need to edit `.env` file!
-
-**3. Discover BACnet Devices:**
-- Go to **Discovery** page
-- Click "Start Discovery"
-- Wait for scan to complete (~30 seconds)
-- Review discovered devices and points
-- Click "Save All Devices" or selectively save
-
-**4. Configure Points:**
-- Go to **Points** page
-- Select points to configure
-- Add Haystack tags:
-  - Site ID (e.g., `klcc`, `menara`)
-  - Equipment Type (e.g., `ahu`, `vav`, `chiller`)
-  - Equipment ID (e.g., `12`, `north-wing`)
-  - Point Function (e.g., `sensor`, `sp`, `cmd`)
-- Enable "Publish to MQTT"
-- Set poll interval (seconds)
-- Save changes
-
-**5. Verify Data Flow:**
-- Check **Monitoring** page for real-time data
-- Check **Dashboard** for MQTT connection status (🟢 = connected)
-- Verify MQTT broker receives data:
-  ```bash
-  mosquitto_sub -h <broker-ip> -t "bacnet/#" -v
-  ```
+| Operation | Command |
+|-----------|---------|
+| Start | `docker compose up -d` |
+| Stop | `docker compose down` |
+| Logs | `docker compose logs -f bacnet-worker` |
+| Restart worker | `docker compose restart bacnet-worker` |
+| Reset (delete data) | `docker compose down -v` |
 
 ---
 
-## Configuration
-
-### MQTT Broker Setup
-
-**Important:** BacPipes requires an **external MQTT broker**. The broker can be:
-- On the same network (e.g., `192.168.1.100`)
-- On a different network (e.g., `10.0.60.3`)
-- A cloud MQTT service
-
-**Configure via GUI:**
-1. Settings page → MQTT Broker IP
-2. Save settings
-3. Restart worker: `docker compose restart bacnet-worker`
-
-**MQTT Connection Status:**
-- Dashboard shows 🟢 Green = Connected
-- Dashboard shows 🔴 Red = Disconnected (check broker IP in Settings)
-
-**Graceful Degradation:**
-- App starts successfully even if MQTT broker unreachable
-- BACnet discovery and configuration work without MQTT
-- Worker auto-reconnects when broker becomes available (every 5 seconds)
-
-### Haystack Tagging System
+## Haystack Tagging
 
 BacPipes uses an 8-field semantic naming structure:
 
@@ -467,652 +117,134 @@ BacPipes uses an 8-field semantic naming structure:
 **Example:**
 ```
 klcc.ahu.12.sensor.temp.air.supply.actual
-└─┬─┘ └┬┘ └┬┘ └──┬──┘ └─┬─┘ └┬─┘ └──┬──┘ └──┬──┘
-Site Equip ID Function Qty  Subj  Loc    Desc
 ```
 
-**MQTT Topics Auto-Generated:**
+**MQTT Topic Generated:**
 ```
 bacnet/klcc/ahu_12/sensor/temp/air/supply/actual/presentValue
 ```
 
-### Poll Intervals
-
-- **Per-Point Configuration:** Each point has individual poll interval (1-3600 seconds)
-- **Bulk Update:** Settings page → Set default interval → Apply to all MQTT-enabled points
-- **Worker Behavior:** Checks points every 5 seconds, polls only if interval elapsed
-- **Minute-Aligned:** New points initialize to poll at next minute boundary
-
 ---
 
-## Common Operations
+## Configuration
 
-### Start Services
+### Via Settings Page (Recommended)
 
-```bash
-# Start core services
-docker compose up -d
+All configuration is done via the web UI at `/settings`:
+- BACnet Network IP, Port, Device ID
+- MQTT Broker IP, Port, Authentication
+- TLS/SSL settings with certificate upload
+- Poll intervals
 
-# Start monitoring stack
-docker compose -f docker-compose-monitoring.yml up -d
+### Via Environment Variables (Optional)
 
-# Start specific service
-docker compose start bacnet-worker
-```
-
-### Stop Services
+For advanced customization, copy `.env.example` to `.env`:
 
 ```bash
-# Stop all services (data preserved in volumes)
-docker compose down
-docker compose -f docker-compose-monitoring.yml down
-
-# Stop specific service
-docker compose stop bacnet-worker
+# Only needed for custom database credentials
+POSTGRES_USER=anatoli
+POSTGRES_DB=bacpipes
+TZ=Asia/Kuala_Lumpur
 ```
-
-### Restart Services
-
-```bash
-# Restart worker (e.g., after MQTT config change)
-docker compose restart bacnet-worker
-
-# Restart frontend
-docker compose restart frontend
-
-# Restart all
-docker compose restart
-```
-
-### View Logs
-
-```bash
-# Follow all logs
-docker compose logs -f
-
-# Follow specific service
-docker compose logs -f bacnet-worker
-docker compose logs -f frontend
-
-# Last 100 lines
-docker compose logs --tail=100 bacnet-worker
-
-# Monitoring stack logs
-docker compose -f docker-compose-monitoring.yml logs -f telegraf
-```
-
-### Update Application
-
-```bash
-# Pull latest changes
-git pull origin development
-
-# Rebuild and restart
-docker compose down
-docker compose up -d --build
-
-# Same for monitoring
-docker compose -f docker-compose-monitoring.yml down
-docker compose -f docker-compose-monitoring.yml up -d --build
-```
-
----
-
-## Data Management
-
-### Database Access
-
-**PostgreSQL (Configuration Database):**
-```bash
-# Connect to database
-docker exec -it bacpipes-postgres psql -U anatoli -d bacpipes
-
-# List tables
-\dt
-
-# Query devices
-SELECT "deviceId", "deviceName", "ipAddress" FROM "Device";
-
-# Query points
-SELECT COUNT(*) FROM "Point" WHERE "mqttPublish" = true;
-
-# Exit
-\q
-```
-
-**TimescaleDB (Time-Series Data):**
-```bash
-# Connect to database
-docker exec -it bacpipes-timescaledb psql -U anatoli -d timescaledb
-
-# Check data volume
-SELECT COUNT(*) FROM sensor_readings;
-
-# Recent data
-SELECT time, haystack_name, dis, value
-FROM sensor_readings
-WHERE time > NOW() - INTERVAL '1 hour'
-ORDER BY time DESC
-LIMIT 20;
-
-# Exit
-\q
-```
-
-### Clean Time-Series Data
-
-**Stop data ingestion first:**
-```bash
-docker compose -f docker-compose-monitoring.yml stop telegraf
-```
-
-**Option 1: Delete All Data (Fresh Start)**
-```bash
-docker exec bacpipes-timescaledb psql -U anatoli -d timescaledb -c "TRUNCATE sensor_readings;"
-```
-
-**Option 2: Delete Recent Bad Data**
-```bash
-# Delete last 2 hours
-docker exec bacpipes-timescaledb psql -U anatoli -d timescaledb -c "
-  DELETE FROM sensor_readings WHERE time > NOW() - INTERVAL '2 hours';
-"
-
-# Delete by haystack pattern
-docker exec bacpipes-timescaledb psql -U anatoli -d timescaledb -c "
-  DELETE FROM sensor_readings WHERE haystack_name LIKE 'bad_site%';
-"
-```
-
-**Option 3: Set Retention Policy (Auto-Cleanup)**
-```bash
-docker exec -it bacpipes-timescaledb psql -U anatoli -d timescaledb
-
-# Keep only last 7 days
-SELECT add_retention_policy('sensor_readings', INTERVAL '7 days');
-
-# Keep last 30 days
-SELECT add_retention_policy('sensor_readings', INTERVAL '30 days');
-
-\q
-```
-
-**Restart data ingestion:**
-```bash
-docker compose -f docker-compose-monitoring.yml start telegraf
-```
-
-### Data Persistence
-
-**What persists across restarts:**
-- ✅ All discovered devices and points (PostgreSQL volume)
-- ✅ Configuration settings (PostgreSQL volume)
-- ✅ Historical sensor data (TimescaleDB volume)
-- ✅ Haystack tags and MQTT topics (PostgreSQL volume)
-
-**What is preserved:**
-| Operation | PostgreSQL | TimescaleDB |
-|-----------|------------|-------------|
-| `docker compose restart` | ✅ Kept | ✅ Kept |
-| `docker compose down && up` | ✅ Kept | ✅ Kept |
-| `docker compose down -v` | ❌ **DELETED** | ❌ **DELETED** |
-
-**⚠️ Warning:** Never use `-v` flag unless you want to wipe all data!
-
-### Complete Reset
-
-**Delete all data and start fresh:**
-```bash
-# Stop all services and delete volumes
-docker compose down -v
-docker compose -f docker-compose-monitoring.yml down -v
-
-# Verify volumes deleted
-docker volume ls | grep bacpipes
-
-# Restart fresh
-docker compose up -d
-docker compose -f docker-compose-monitoring.yml up -d
-```
-
----
-
-## Monitoring & Dashboards
-
-### Dashboard (Port 3001)
-
-**Main Operations Dashboard:**
-- URL: `http://<your-ip>:3001`
-- Real-time system status
-- Device statistics
-- MQTT connection status (🟢/🔴)
-- Recent point values
-
-**Pages:**
-- `/` - Operations dashboard
-- `/discovery` - BACnet device discovery
-- `/points` - Point configuration and tagging
-- `/monitoring` - Real-time MQTT stream
-- `/settings` - System configuration
-
-### MQTT Monitoring
-
-**Subscribe to all topics:**
-```bash
-mosquitto_sub -h <broker-ip> -t "bacnet/#" -v
-```
-
-**Publish write command:**
-```bash
-mosquitto_pub -h <broker-ip> -t "bacnet/write/command" -m '{
-  "deviceId": 2020521,
-  "objectType": "analog-value",
-  "objectInstance": 120,
-  "value": 21.5,
-  "priority": 8
-}'
-```
-
-### Database Queries
-
-**Active publishing points:**
-```bash
-docker exec bacpipes-postgres psql -U anatoli -d bacpipes -c "
-  SELECT COUNT(*) FROM \"Point\" WHERE \"mqttPublish\" = true AND enabled = true;
-"
-```
-
-**Poll interval distribution:**
-```bash
-docker exec bacpipes-postgres psql -U anatoli -d bacpipes -c "
-  SELECT \"pollInterval\", COUNT(*) as count
-  FROM \"Point\"
-  WHERE \"mqttPublish\" = true
-  GROUP BY \"pollInterval\"
-  ORDER BY \"pollInterval\";
-"
-```
-
-**Recent sensor readings:**
-```bash
-docker exec bacpipes-timescaledb psql -U anatoli -d timescaledb -c "
-  SELECT time, haystack_name, value
-  FROM sensor_readings
-  WHERE time > NOW() - INTERVAL '5 minutes'
-  ORDER BY time DESC
-  LIMIT 10;
-"
-```
-
----
-
-## Troubleshooting
-
-### Worker Won't Start
-
-**Symptoms:** Worker container exits immediately
-
-**Solutions:**
-```bash
-# Check logs
-docker compose logs bacnet-worker
-
-# Common issues:
-# 1. Database not ready
-docker compose ps postgres  # Should be "healthy"
-
-# 2. BACnet port conflict
-sudo netstat -tulpn | grep 47808
-
-# 3. Restart worker
-docker compose restart bacnet-worker
-```
-
-### MQTT Not Connected (🔴 Red)
-
-**Symptoms:** Dashboard shows disconnected, no data in monitoring
-
-**Solutions:**
-1. **Verify MQTT broker IP:**
-   - Settings page → Check MQTT Broker field
-   - Ping broker: `ping <broker-ip>`
-   - Check broker running: `mosquitto_sub -h <broker-ip> -t test`
-
-2. **Fix configuration:**
-   - Update broker IP in Settings
-   - Save settings
-   - Restart worker: `docker compose restart bacnet-worker`
-
-3. **Check worker logs:**
-   ```bash
-   docker compose logs bacnet-worker | grep MQTT
-   # Look for: "✅ Connected to MQTT broker"
-   # Or: "⚠️ MQTT broker unreachable"
-   ```
-
-### No Data in TimescaleDB
-
-**Symptoms:** No time-series data being stored
-
-**Solutions:**
-1. **Check Telegraf logs:**
-   ```bash
-   docker compose -f docker-compose-monitoring.yml logs telegraf
-   # Should show: "✅ Saved to TimescaleDB"
-   ```
-
-2. **Verify MQTT data flow:**
-   ```bash
-   mosquitto_sub -h <broker-ip> -t "bacnet/#" -v
-   # Should see JSON messages
-   ```
-
-3. **Check TimescaleDB:**
-   ```bash
-   docker exec bacpipes-timescaledb psql -U anatoli -d timescaledb -c "
-     SELECT COUNT(*) FROM sensor_readings;
-   "
-   # Should show row count > 0
-   ```
-
-4. **Restart Telegraf:**
-   ```bash
-   docker compose -f docker-compose-monitoring.yml restart telegraf
-   ```
-
-### BACnet Discovery Fails
-
-**Symptoms:** Discovery finds no devices
-
-**Solutions:**
-1. **Check network connectivity:**
-   ```bash
-   # From host machine
-   ping <bacnet-device-ip>
-   ```
-
-2. **Verify BACnet IP configuration:**
-   - Settings page → BACnet IP must match your local network interface
-   - Find correct IP: `ip addr show` or `ifconfig`
-   - Update if wrong, restart worker
-
-3. **Check firewall:**
-   ```bash
-   # Allow BACnet/IP (UDP 47808)
-   sudo ufw allow 47808/udp
-   ```
-
-4. **Check worker logs:**
-   ```bash
-   docker compose logs bacnet-worker | grep "Discovery"
-   ```
-
-### High Memory Usage
-
-**Symptoms:** System running slow, OOM errors
-
-**Solutions:**
-1. **Check container stats:**
-   ```bash
-   docker stats
-   ```
-
-2. **Ensure production mode:**
-   ```bash
-   # .env file should have:
-   NODE_ENV=production
-   ```
-
-3. **Clean old data:**
-   ```bash
-   # Set retention policy (keep 7 days)
-   docker exec -it bacpipes-timescaledb psql -U anatoli -d timescaledb
-   SELECT add_retention_policy('sensor_readings', INTERVAL '7 days');
-   \q
-   ```
-
-4. **Reduce poll frequency:**
-   - Settings page → Increase default poll interval
-   - Apply to all points
-
-### Permission Denied Errors
-
-**Symptoms:** Cannot delete files, access denied
-
-**Solutions:**
-```bash
-# Fix ownership
-sudo chown -R $USER:$USER /path/to/BacPipes
-
-# Fix permissions
-chmod -R u+w /path/to/BacPipes
-```
-
----
-
-## Development
-
-### Project Structure
-
-```
-BacPipes/
-├── docker-compose.yml                  # Core services
-├── docker-compose-monitoring.yml       # Monitoring stack
-├── .env                                # Environment config
-├── README.md                           # This file
-├── CLAUDE.md                           # AI development context
-│
-├── frontend/                           # Next.js 15 app (port 3001)
-│   ├── src/app/
-│   │   ├── page.tsx                    # Dashboard
-│   │   ├── discovery/                  # BACnet discovery
-│   │   ├── points/                     # Point configuration
-│   │   ├── monitoring/                 # Real-time monitoring
-│   │   ├── settings/                   # System settings
-│   │   └── api/                        # API routes
-│   └── prisma/
-│       ├── schema.prisma               # Database schema
-│       └── migrations/                 # Migration history
-│
-├── worker/                             # Python BACnet worker
-│   ├── mqtt_publisher.py               # Main polling loop
-│   ├── config.py                       # Configuration
-│   └── requirements.txt
-│
-├── telegraf/                           # MQTT → TimescaleDB
-│   ├── mqtt_to_timescaledb.py          # Python bridge
-│   └── requirements.txt
-│
-└── timescaledb/
-    └── init/
-        └── 01_init.sql                 # Hypertable setup
-```
-
-### Database Schema
-
-**PostgreSQL (Configuration):**
-- `Device` - BACnet devices
-- `Point` - BACnet points with Haystack tags
-- `SystemSettings` - BACnet IP, timezone, poll intervals
-- `MqttConfig` - MQTT broker settings
-- `WriteHistory` - Write command audit trail
-
-**TimescaleDB (Time-Series):**
-- `sensor_readings` - Hypertable for all sensor data
-  - Columns: `time`, `haystack_name`, `dis`, `value`, `units`, `device_id`, `object_type`, `object_instance`
-  - Indexed on `time DESC` for fast queries
-  - Compressed with retention policies
-
-### API Endpoints
-
-**Discovery:**
-- `POST /api/discovery/start` - Start BACnet discovery
-- `POST /api/discovery/save` - Save discovered devices
-
-**Points:**
-- `GET /api/points` - List all points
-- `PUT /api/points/:id` - Update point configuration
-- `POST /api/points/bulk-poll-interval` - Update all intervals
-
-**Dashboard:**
-- `GET /api/dashboard/summary` - System status and statistics
-
-**Settings:**
-- `GET /api/settings` - Get system settings
-- `PUT /api/settings` - Update system settings
-
-**Monitoring:**
-- `GET /api/monitoring/stream` - Server-sent events for real-time data
-
-### Environment Variables
-
-See `.env.example` for full reference.
-
-**Core:**
-- `BACNET_IP` - Local IP on BACnet network
-- `BACNET_PORT` - BACnet/IP port (default: 47808)
-- `MQTT_BROKER` - MQTT broker IP
-- `MQTT_PORT` - MQTT port (default: 1883)
-- `TZ` - Timezone for timestamps
-
-**Database:**
-- `POSTGRES_USER` - PostgreSQL username
-- `POSTGRES_DB` - PostgreSQL database name
-- `DATABASE_URL` - PostgreSQL connection string
 
 ---
 
 ## Port Allocation
 
-| Service | Port | Description |
-|---------|------|-------------|
-| Frontend | 3001 | Web UI (discovery, points, settings, monitoring) |
-| PostgreSQL | 5434 | Configuration database |
-| TimescaleDB | 5435 | Time-series database |
-| BACnet Worker | 47808 | BACnet/IP protocol |
+| Port | Service |
+|------|---------|
+| 3001 | Web UI (Frontend) |
+| 5434 | PostgreSQL |
+| 47808 | BACnet/IP (UDP) |
 
 ---
 
-## Support & Documentation
+## MQTT Topics
 
-**Documentation:**
-- This README.md - Complete user guide
-- CLAUDE.md - AI development context
-- Git history - All changes and migrations
+**Point Data:**
+```
+bacnet/{site}/{equip}_{id}/{function}/{measurement}/{substance}/{condition}/{descriptor}/presentValue
+```
 
-**Repository:**
-- Gitea: http://10.0.10.2:30008/ak101/app-bacnet-local.git
-- Branch: `development` (active development)
-- Branch: `main` (production releases)
+**Write Commands:**
+```
+bacnet/write/command
+```
 
-**Logging:**
-```bash
-# View all logs
-docker compose logs -f
-
-# Worker logs (BACnet + MQTT)
-docker compose logs -f bacnet-worker
-
-# Frontend logs
-docker compose logs -f frontend
-
-# Monitoring logs
-docker compose -f docker-compose-monitoring.yml logs -f
+**Payload Format:**
+```json
+{
+  "haystack_name": "klcc.ahu.12.sensor.temp.air.supply.actual",
+  "dis": "AHU-12 Supply Air Temp",
+  "value": 23.5,
+  "units": "degC",
+  "timestamp": "2025-12-14T10:30:00.000Z"
+}
 ```
 
 ---
 
 ## Troubleshooting
 
-### Frontend Container Exits Immediately
-
-**Symptom:** `docker compose logs frontend` shows "ETIMEDOUT" or "ECONNREFUSED" errors
-
-**Cause:** Database port mismatch - frontend trying to connect to port 5432 instead of 5434
-
-**Fix:**
-1. Ensure `frontend/.env` has the correct `DATABASE_URL`:
-   ```bash
-   DATABASE_URL="postgresql://anatoli@localhost:5434/bacpipes"
-   ```
-
-2. Verify root `.env` also uses port 5434
-
-3. Restart the frontend:
-   ```bash
-   docker compose restart frontend
-   ```
-
-### CSV Export Feature Fails
-
-**Symptom:** Export button times out or returns error when trying to download historical data
-
-**Cause:** TimescaleDB port or host mismatch
-
-**Fix:**
-1. Ensure `frontend/.env` has correct TimescaleDB settings:
-   ```bash
-   TIMESCALEDB_HOST=localhost
-   TIMESCALEDB_PORT=5435
-   ```
-
-2. Verify TimescaleDB is running:
-   ```bash
-   docker compose -f docker-compose-monitoring.yml ps
-   ```
-
-3. Restart the frontend:
-   ```bash
-   docker compose restart frontend
-   ```
-
-### Worker Crashes on Startup
-
-**Symptom:** `docker compose logs bacnet-worker` shows "No MQTT configuration found" or similar error
-
-**Cause:** Database not seeded with initial configuration
-
-**Solution:**
-Database seeding runs automatically on first startup. If it failed, you can manually seed:
+### Worker Not Starting
 ```bash
-docker exec bacpipes-frontend npx prisma db seed
-docker compose restart bacnet-worker
+docker compose logs bacnet-worker
+```
+Common: Database not ready. Wait 30s and check again.
+
+### MQTT Shows Disconnected
+1. Check broker IP in Settings
+2. Test: `ping <broker-ip>`
+3. Restart: `docker compose restart bacnet-worker`
+
+### Discovery Finds No Devices
+1. Verify BACnet IP matches your network interface
+2. Check firewall: `sudo ufw allow 47808/udp`
+3. Confirm devices are on same network
+
+---
+
+## Optional: Time-Series Storage
+
+For historical data storage, deploy the monitoring stack:
+
+```bash
+docker compose -f docker-compose-monitoring.yml up -d
 ```
 
-### Discovery Finds 0 Devices
+This adds:
+- TimescaleDB (port 5435) - Time-series database
+- Telegraf - MQTT to TimescaleDB ingestion
 
-**Symptom:** Discovery completes but shows 0 devices found
-
-**Common Causes:**
-1. **Wrong BACnet IP** - Check Settings page, ensure IP matches your server's network interface
-2. **Firewall blocking** - BACnet uses UDP port 47808
-3. **Network isolation** - BACnet devices must be on same network as server
-
-**Fix:**
-1. Verify IP address in Settings page
-2. Check network connectivity:
-   ```bash
-   # On Debian/Ubuntu
-   ip addr show
-
-   # Ping a known BACnet device
-   ping [device-ip]
-   ```
-
-3. Check firewall rules:
-   ```bash
-   # Allow BACnet port
-   sudo ufw allow 47808/udp
-   ```
+**Note:** A dedicated Storage App with monitoring UI is planned for future release.
 
 ---
 
-## License
+## Development
 
-Proprietary - Internal use only
+See `CLAUDE.md` for detailed development context and recent changes.
+
+**Project Structure:**
+```
+bacpipes/
+├── docker-compose.yml          # Core services
+├── frontend/                   # Next.js web app
+│   ├── src/app/               # Pages and API routes
+│   └── prisma/                # Database schema
+├── worker/                     # Python BACnet worker
+│   └── mqtt_publisher.py      # Main polling loop
+└── ARCHITECTURE_REFACTOR_PLAN.md  # Upcoming changes
+```
 
 ---
 
-**Last Updated:** 2025-12-01
-**Version:** 1.0.0
-**Status:** Production-ready for single-site deployment
+## Repository
+
+- **Gitea**: http://10.0.10.2:30008/ak101/app-bacnet-local.git
+- **Development**: `development` branch
+- **Production**: `main` branch
+
+---
+
+**Last Updated:** December 2025
+**Status:** Production-ready

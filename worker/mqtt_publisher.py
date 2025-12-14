@@ -417,24 +417,37 @@ class MqttPublisher:
                 client_key = getattr(self, 'mqtt_client_key_path', None)
                 tls_insecure = getattr(self, 'mqtt_tls_insecure', False)
 
-                # Configure TLS
-                if ca_cert or client_cert:
-                    self.mqtt_client.tls_set(
-                        ca_certs=ca_cert,
-                        certfile=client_cert,
-                        keyfile=client_key,
-                        cert_reqs=ssl.CERT_NONE if tls_insecure else ssl.CERT_REQUIRED,
-                        tls_version=ssl.PROTOCOL_TLS
-                    )
-                    if tls_insecure:
-                        self.mqtt_client.tls_insecure_set(True)
-                        logger.warning(f"🔓 TLS configured with INSECURE mode (certificate verification disabled)")
-                    else:
-                        logger.info(f"🔒 TLS configured with certificate verification")
+                # Configure TLS based on insecure mode
+                if tls_insecure:
+                    # Insecure mode: skip all certificate verification
+                    # Don't pass CA cert - it would still trigger verification
+                    self.mqtt_client.tls_set(cert_reqs=ssl.CERT_NONE)
+                    self.mqtt_client.tls_insecure_set(True)
+                    logger.warning(f"🔓 TLS configured with INSECURE mode (certificate verification disabled)")
                 else:
-                    # TLS enabled but no certs - use default CA bundle
-                    self.mqtt_client.tls_set(cert_reqs=ssl.CERT_NONE if tls_insecure else ssl.CERT_REQUIRED)
-                    logger.info(f"🔒 TLS configured with system CA bundle")
+                    # Secure mode: verify certificates
+                    # Validate certificate files exist and are readable
+                    if ca_cert:
+                        if not os.path.exists(ca_cert):
+                            logger.error(f"❌ CA certificate file not found: {ca_cert}")
+                            ca_cert = None
+                        elif not os.access(ca_cert, os.R_OK):
+                            logger.error(f"❌ CA certificate file not readable (permission denied): {ca_cert}")
+                            ca_cert = None
+
+                    if ca_cert or client_cert:
+                        self.mqtt_client.tls_set(
+                            ca_certs=ca_cert,
+                            certfile=client_cert,
+                            keyfile=client_key,
+                            cert_reqs=ssl.CERT_REQUIRED,
+                            tls_version=ssl.PROTOCOL_TLS
+                        )
+                        logger.info(f"🔒 TLS configured with certificate verification (CA: {ca_cert})")
+                    else:
+                        # No custom certs - use system CA bundle
+                        self.mqtt_client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+                        logger.info(f"🔒 TLS configured with system CA bundle")
 
             self.mqtt_client.connect(self.mqtt_broker, self.mqtt_port, 60)
             self.mqtt_client.loop_start()
@@ -519,7 +532,7 @@ class MqttPublisher:
                             logger.debug(f"   MQTT reconnection in progress...")
                             return False
                     except Exception as e:
-                        logger.debug(f"   MQTT reconnection failed: {e}")
+                        logger.warning(f"⚠️  MQTT reconnection failed: {e}")
                         return False
                 else:
                     # No client exists - create new connection
